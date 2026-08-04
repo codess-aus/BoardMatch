@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -10,14 +11,23 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from . import coach, discovery, network, profiles
+from .config import get_settings
 from .fit import rank, score_opportunity
 from .models import ApplicationStage, Candidate, FitResult, IntroPath
 from .readiness import ReadinessTracker
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    get_settings()
+    yield
+
 
 app = FastAPI(
     title="BoardMatch",
     description="Find, qualify for and win paid board seats.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 WEB_DIR = Path(__file__).parent / "web"
