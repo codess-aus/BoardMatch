@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BoardMatch</title>
+<style>
+  :root { --ink:#12203a; --muted:#5b6b85; --line:#dde4ee; --accent:#0b5cd6; --paid:#0f7b4f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; color:var(--ink); background:#f5f7fb; }
+  header { background:var(--ink); color:#fff; padding:1.5rem 2rem; }
+  header h1 { margin:0; font-size:1.4rem; }
+  header p { margin:.35rem 0 0; color:#b9c6dd; font-size:.9rem; }
+  main { display:grid; grid-template-columns: 1fr 360px; gap:1.5rem; padding:1.5rem 2rem; align-items:start; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:1rem 1.15rem; margin-bottom:1rem; }
+  .controls { display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:.5rem .9rem; cursor:pointer; font-size:.85rem; }
+  button.secondary { background:#eef2f9; color:var(--ink); }
+  label { font-size:.85rem; color:var(--muted); }
+  .opp-head { display:flex; justify-content:space-between; gap:1rem; }
+  .score { font-size:1.6rem; font-weight:700; }
+  .badge { display:inline-block; font-size:.72rem; padding:.15rem .5rem; border-radius:999px; background:#eef2f9; color:var(--muted); margin-right:.35rem; }
+  .badge.paid { background:#e3f4ec; color:var(--paid); font-weight:600; }
+  .meta { color:var(--muted); font-size:.85rem; margin:.35rem 0 .6rem; }
+  ul { margin:.4rem 0 .4rem 1.1rem; padding:0; font-size:.87rem; }
+  h3 { font-size:.95rem; margin:.8rem 0 .2rem; }
+  .intro { background:#fff8e8; border-left:3px solid #e0a72b; padding:.5rem .7rem; font-size:.85rem; border-radius:0 6px 6px 0; }
+  pre { white-space:pre-wrap; background:#f7f9fc; border:1px solid var(--line); border-radius:6px; padding:.75rem; font-size:.8rem; max-height:340px; overflow:auto; }
+  .bar { height:10px; background:#eef2f9; border-radius:999px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:var(--accent); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>BoardMatch</h1>
+  <p>Surfacing the invisible market for paid board and NED seats — and coaching you through it.</p>
+</header>
+<main>
+  <section>
+    <div class="controls card">
+      <label><input type="checkbox" id="paidOnly" checked /> Paid seats only</label>
+      <label>Min fee AUD <input type="number" id="minFee" value="0" min="0" step="5000" style="width:100px" /></label>
+      <button id="refresh">Find my board seats</button>
+      <button class="secondary" id="cvBtn">Draft board CV</button>
+      <button class="secondary" id="bioBtn">Draft director bio</button>
+    </div>
+    <div id="results"></div>
+  </section>
+  <aside>
+    <div class="card" id="candidate"></div>
+    <div class="card" id="readiness"></div>
+    <div class="card" id="drafts"><em>Drafts appear here.</em></div>
+  </aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const list = (items) => items.length ? `<ul>${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>` : "<p class='meta'>None</p>";
+
+async function loadCandidate() {
+  const c = await (await fetch("/api/candidate")).json();
+  $("candidate").innerHTML = `<h2 style="font-size:1rem;margin:0">${esc(c.name)}</h2>
+    <p class="meta">${esc(c.headline)}</p>
+    <p class="meta">${c.years_experience} years · ${esc(c.sectors.join(", "))}</p>
+    <div>${c.skills.map(s => `<span class="badge">${esc(s)}</span>`).join("")}</div>`;
+}
+
+async function loadReadiness() {
+  const r = await (await fetch("/api/readiness")).json();
+  $("readiness").innerHTML = `<h2 style="font-size:1rem;margin:0 0 .4rem">Board-readiness score</h2>
+    <div class="score">${r.readiness_score}<span class="meta">/100</span></div>
+    <div class="bar"><span style="width:${r.readiness_score}%"></span></div>
+    <p class="meta">Credentials ${r.components.credentials}/40 · Skills ${r.components.skills}/30 · Pipeline ${r.components.pipeline}/30</p>
+    <p class="meta">${r.paid_opportunities_in_reach} paid seats within reach</p>
+    <h3>Next actions</h3>${list(r.next_actions)}`;
+}
+
+async function loadOpportunities() {
+  const params = new URLSearchParams({
+    paid_only: $("paidOnly").checked,
+    min_fee_aud: $("minFee").value || 0
+  });
+  const data = await (await fetch("/api/opportunities?" + params)).json();
+  $("results").innerHTML = data.results.map(renderOpportunity).join("") ||
+    "<div class='card'>No matching seats — try relaxing the filters.</div>";
+  document.querySelectorAll("[data-outreach]").forEach(btn =>
+    btn.addEventListener("click", () => draft("/api/coach/outreach?opportunity_id=" + encodeURIComponent(btn.dataset.outreach))));
+  document.querySelectorAll("[data-track]").forEach(btn =>
+    btn.addEventListener("click", () => trackApplication(btn.dataset.track)));
+}
+
+function renderOpportunity(o) {
+  return `<div class="card">
+    <div class="opp-head">
+      <div>
+        <strong>${esc(o.title)}</strong> — ${esc(o.organisation)}
+        <div class="meta">${esc(o.location)} · ${esc(o.sector)} · ${esc(o.source)}${o.closes_on ? " · closes " + esc(o.closes_on) : ""}</div>
+        <span class="badge ${o.remuneration === "paid" ? "paid" : ""}">${esc(o.fee_display)}</span>
+        <span class="badge">${esc(o.band)}</span>
+      </div>
+      <div class="score">${o.score}</div>
+    </div>
+    <p class="meta">${esc(o.summary)}</p>
+    ${o.intro_path ? `<div class="intro"><strong>Warm path (${o.intro_path.warmth}):</strong> ${esc(o.intro_path.reason)}</div>` : ""}
+    <h3>Why you fit</h3>${list(o.rationale)}
+    <h3>Gaps to close</h3>${list(o.gap_actions)}
+    <div style="margin-top:.6rem">
+      <button data-outreach="${esc(o.id)}">Draft outreach</button>
+      <button class="secondary" data-track="${esc(o.id)}">Track as applied</button>
+    </div>
+  </div>`;
+}
+
+async function draft(url) {
+  const d = await (await fetch(url, { method: "POST" })).json();
+  $("drafts").innerHTML = `<h2 style="font-size:1rem;margin:0">${esc(d.kind)}</h2>
+    <p class="meta">generated by ${esc(d.engine)}</p><pre>${esc(d.content)}</pre>`;
+}
+
+async function trackApplication(id) {
+  await fetch("/api/tracker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ opportunity_id: id, stage: "applied" })
+  });
+  loadReadiness();
+}
+
+$("refresh").addEventListener("click", loadOpportunities);
+$("cvBtn").addEventListener("click", () => draft("/api/coach/board-cv"));
+$("bioBtn").addEventListener("click", () => draft("/api/coach/bio"));
+loadCandidate(); loadReadiness(); loadOpportunities();
+</script>
+</body>
+</html>

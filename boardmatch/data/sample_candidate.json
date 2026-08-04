@@ -1,0 +1,53 @@
+{
+  "name": "Priya Raman",
+  "headline": "CFO turned governance professional | fintech, risk and ESG",
+  "years_experience": 22,
+  "skills": [
+    "finance",
+    "risk management",
+    "governance",
+    "esg",
+    "stakeholder engagement",
+    "digital transformation",
+    "regulatory compliance"
+  ],
+  "sectors": ["financial services", "technology"],
+  "credentials": ["CA (ANZ)", "MBA"],
+  "board_experience": ["Treasurer, Fintech Australia (2021-2024)"],
+  "achievements": [
+    "Led a $400m capital raise and the subsequent integration of two acquisitions",
+    "Rebuilt enterprise risk framework ahead of APRA CPS 230 obligations",
+    "Chaired the ESG reporting steering group for a top-20 ASX issuer"
+  ],
+  "locations": ["Sydney, NSW"],
+  "connections": [
+    {
+      "name": "Alex Chen",
+      "relationship": "Former colleague",
+      "organisations": ["Meridian Fintech Group (ASX:MFG)"],
+      "board_seats": ["Meridian Fintech Group (ASX:MFG)"],
+      "strength": 0.8
+    },
+    {
+      "name": "Dr Helen Osei",
+      "relationship": "Mentor",
+      "organisations": ["Australian Digital Health Agency"],
+      "board_seats": ["Coastal Community Health Ltd"],
+      "strength": 0.9
+    },
+    {
+      "name": "Marcus Bell",
+      "relationship": "Industry peer",
+      "organisations": ["Nimbus Cloud Security"],
+      "board_seats": [],
+      "strength": 0.4
+    },
+    {
+      "name": "Sonia Vitale",
+      "relationship": "Executive search partner",
+      "organisations": ["Boardroom Search Partners"],
+      "board_seats": [],
+      "strength": 0.6
+    }
+  ]
+}
