@@ -101,8 +101,9 @@ class TestV1Readiness:
         assert resp.status_code == 200
         body = resp.json()
         parsed = ReadinessResponse(**body)
-        assert isinstance(parsed.readiness_score, float)
-        assert parsed.message
+        assert isinstance(parsed.score, int)
+        assert parsed.scoring_version
+        assert "credentials" in body["components"]
 
 
 # --- Coaching ---
