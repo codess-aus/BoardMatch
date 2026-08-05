@@ -6,7 +6,7 @@ import uuid
 from datetime import date
 
 from boardmatch.domain.repositories import PaginatedResult
-from boardmatch.models import Application, ApplicationStage, Candidate, Opportunity
+from boardmatch.models import Application, ApplicationStage, Candidate, FitEvaluation, Opportunity
 
 
 class InMemoryCandidateRepository:
@@ -180,3 +180,45 @@ class InMemoryApplicationRepository:
             del user_apps[application_id]
             return True
         return False
+
+
+
+class InMemoryFitEvaluationRepository:
+    """User-scoped in-memory store for fit evaluations."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, list[FitEvaluation]] = {}
+
+    def find_existing(
+        self,
+        user_id: str,
+        opportunity_id: str,
+        profile_version: int,
+        scoring_version: str,
+    ) -> FitEvaluation | None:
+        """Find an existing evaluation matching the exact version tuple."""
+        for ev in self._store.get(user_id, []):
+            if (
+                ev.opportunity_id == opportunity_id
+                and ev.profile_version == profile_version
+                and ev.scoring_version == scoring_version
+            ):
+                return ev
+        return None
+
+    def create(self, evaluation: FitEvaluation) -> FitEvaluation:
+        """Persist a new evaluation."""
+        self._store.setdefault(evaluation.user_id, []).append(evaluation)
+        return evaluation
+
+    def list_for_user(self, user_id: str) -> list[FitEvaluation]:
+        """Return all evaluations for a user, newest first."""
+        evals = self._store.get(user_id, [])
+        return sorted(evals, key=lambda e: e.created_at, reverse=True)
+
+    def get_by_id(self, user_id: str, evaluation_id: str) -> FitEvaluation | None:
+        """Return a single evaluation owned by the user."""
+        for ev in self._store.get(user_id, []):
+            if ev.id == evaluation_id:
+                return ev
+        return None
