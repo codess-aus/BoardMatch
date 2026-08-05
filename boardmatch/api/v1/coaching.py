@@ -10,12 +10,15 @@ from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.drafts import Draft, InMemoryDraftRepository, new_draft_id
+from boardmatch.validation import validate_draft
 
 from ... import coach, discovery, profiles
 from ...fit import score_opportunity
+from .rate_limit import draft_rate_limiter
+from .authorization import require_active_user
 from .schemas import CoachingBoardCvResponse
 
-router = APIRouter(prefix="/coaching", tags=["coaching"])
+router = APIRouter(prefix="/coaching", tags=["coaching"], dependencies=[Depends(require_active_user)])
 
 _candidate = profiles.load_sample_candidate()
 _draft_repo = InMemoryDraftRepository()
@@ -30,6 +33,25 @@ _profile_versions: dict[str, int] = {}
 def get_draft_repo() -> InMemoryDraftRepository:
     """Accessor for test overrides."""
     return _draft_repo
+
+
+def _check_rate_limit(user_id: str) -> None:
+    """Raise 429 if user has exceeded draft generation rate limit."""
+    if not draft_rate_limiter.is_allowed(user_id):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: maximum 10 drafts per hour",
+        )
+
+
+def _validate_and_raise(content: str, draft_type: str, engine: str) -> None:
+    """Validate draft content and raise 422 if validation fails."""
+    result = validate_draft(content, draft_type, engine)
+    if not result.valid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Draft validation failed: {'; '.join(result.errors)}",
+        )
 
 
 def _current_profile_version(user_id: str) -> int:
@@ -85,6 +107,8 @@ def draft_board_cv(
     opportunity_id: Optional[str] = None,
 ) -> CoachingBoardCvResponse:
     """Generate a board CV draft, optionally tailored to an opportunity."""
+    _check_rate_limit(user.user_id)
+
     fit = None
     if opportunity_id:
         opportunity = discovery.get_opportunity(opportunity_id)
@@ -92,6 +116,8 @@ def draft_board_cv(
             raise HTTPException(status_code=404, detail="Opportunity not found")
         fit = score_opportunity(_candidate, opportunity)
     raw_draft = coach.board_cv(_candidate, fit)
+
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
 
     persisted = Draft(
         id=new_draft_id(),
@@ -105,6 +131,7 @@ def draft_board_cv(
         opportunity_id=opportunity_id,
     )
     _draft_repo.create(persisted)
+    draft_rate_limiter.record(user.user_id)
 
     return CoachingBoardCvResponse(
         kind=raw_draft.kind, engine=raw_draft.engine, content=raw_draft.content
@@ -116,7 +143,11 @@ def draft_director_bio(
     user: CurrentUser = Depends(get_required_user),
 ) -> DraftResponse:
     """Generate a director bio and persist the draft."""
+    _check_rate_limit(user.user_id)
+
     raw_draft = coach.director_bio(_candidate)
+
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
 
     persisted = Draft(
         id=new_draft_id(),
@@ -129,6 +160,7 @@ def draft_director_bio(
         profile_version=_current_profile_version(user.user_id),
     )
     _draft_repo.create(persisted)
+    draft_rate_limiter.record(user.user_id)
     return _draft_to_response(persisted)
 
 
@@ -138,6 +170,8 @@ def draft_outreach(
     opportunity_id: Optional[str] = None,
 ) -> DraftResponse:
     """Generate an outreach message and persist the draft."""
+    _check_rate_limit(user.user_id)
+
     if not opportunity_id:
         raise HTTPException(status_code=400, detail="opportunity_id is required")
     opportunity = discovery.get_opportunity(opportunity_id)
@@ -145,6 +179,8 @@ def draft_outreach(
         raise HTTPException(status_code=404, detail="Opportunity not found")
 
     raw_draft = coach.outreach_message(_candidate, opportunity)
+
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
 
     persisted = Draft(
         id=new_draft_id(),
@@ -158,6 +194,7 @@ def draft_outreach(
         opportunity_id=opportunity_id,
     )
     _draft_repo.create(persisted)
+    draft_rate_limiter.record(user.user_id)
     return _draft_to_response(persisted)
 
 

@@ -81,11 +81,67 @@ class ApplicationUpdateRequest(BaseModel):
     notes: str | None = None
 
 
+class ApplicationEventCreateRequest(BaseModel):
+    """Request body for creating a stage transition event."""
+
+    new_stage: str
+    notes: str = ""
+
+
+class ApplicationEventResponse(BaseModel):
+    """Response model for a single application event."""
+
+    id: str
+    application_id: str
+    previous_stage: str
+    new_stage: str
+    timestamp: str
+    notes: str
+
+
+class ApplicationEventListResponse(BaseModel):
+    """Response model for listing application events."""
+
+    events: list[ApplicationEventResponse]
+
+
 class ReadinessResponse(BaseModel):
     """Placeholder response for readiness endpoint."""
 
-    readiness_score: float = 0.0
-    message: str = "Readiness endpoint - coming soon"
+
+class ReadinessComponentsResponse(BaseModel):
+    """Breakdown of readiness score components."""
+
+    credentials: int
+    skills: int
+    pipeline_momentum: int
+
+
+class ReadinessResponse(BaseModel):
+    """Full readiness assessment for the authenticated user."""
+
+    score: int
+    components: ReadinessComponentsResponse
+    scoring_version: str
+    next_actions: list[str]
+    stage_counts: dict[str, int]
+
+
+class ReadinessHistoryEntry(BaseModel):
+    """A single historical readiness snapshot."""
+
+    score: int
+    components: ReadinessComponentsResponse
+    scoring_version: str
+    next_actions: list[str]
+    stage_counts: dict[str, int]
+    timestamp: str
+
+
+class ReadinessHistoryResponse(BaseModel):
+    """List of historical readiness snapshots."""
+
+    snapshots: list[ReadinessHistoryEntry]
 
 
 class CoachingBoardCvResponse(BaseModel):
@@ -104,3 +160,32 @@ class PaginatedOpportunityResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+
+class FitEvaluationCreateRequest(BaseModel):
+    """Request body for creating/re-evaluating a fit evaluation."""
+
+    opportunity_id: str
+
+
+class FitEvaluationResponse(BaseModel):
+    """Response model for a single fit evaluation."""
+
+    id: str
+    opportunity_id: str
+    profile_version: int
+    scoring_version: str
+    score: int
+    band: str
+    matched_skills: list[str]
+    missing_skills: list[str]
+    rationale: list[str]
+    gap_actions: list[str]
+    created_at: str
+
+
+class FitEvaluationListResponse(BaseModel):
+    """Response model for listing fit evaluations."""
+
+    evaluations: list[FitEvaluationResponse]
