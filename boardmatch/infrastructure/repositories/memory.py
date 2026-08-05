@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from boardmatch.domain.repositories import PaginatedResult
-from boardmatch.models import Application, ApplicationStage, Candidate, FitEvaluation, Opportunity
+from boardmatch.models import (
+    Application,
+    ApplicationEvent,
+    ApplicationStage,
+    Candidate,
+    FitEvaluation,
+    Opportunity,
+    VALID_STAGE_TRANSITIONS,
+)
 
 
 class InMemoryCandidateRepository:
@@ -95,8 +103,11 @@ class InMemoryOpportunityRepository:
         return results
 
     def _sort_deterministic(self, results: list[Opportunity]) -> list[Opportunity]:
-        """Sort results deterministically by closes_on (ascending), then id."""
-        return sorted(results, key=lambda o: (o.closes_on or "9999-12-31", o.id))
+        """Sort results deterministically by fee descending, then title ascending."""
+        return sorted(
+            results,
+            key=lambda o: (-(o.fee_aud if o.fee_aud is not None else -1), o.title),
+        )
 
     def search(self, **filters: object) -> list[Opportunity]:
         """Return opportunities matching the requested filters.
@@ -139,6 +150,7 @@ class InMemoryApplicationRepository:
 
     def __init__(self) -> None:
         self._store: dict[str, dict[str, Application]] = {}
+        self._events: dict[str, list[ApplicationEvent]] = {}
 
     def list_for_user(self, user_id: str) -> list[Application]:
         """Return all applications for a user."""
@@ -181,6 +193,20 @@ class InMemoryApplicationRepository:
             return True
         return False
 
+    # --- Event methods ---
+
+    def add_event(self, user_id: str, event: ApplicationEvent) -> ApplicationEvent:
+        """Store an immutable event for an application."""
+        key = f"{user_id}:{event.application_id}"
+        self._events.setdefault(key, []).append(event)
+        return event
+
+    def list_events(
+        self, user_id: str, application_id: str
+    ) -> list[ApplicationEvent]:
+        """Return events for an application in chronological order."""
+        key = f"{user_id}:{application_id}"
+        return list(self._events.get(key, []))
 
 
 class InMemoryFitEvaluationRepository:
