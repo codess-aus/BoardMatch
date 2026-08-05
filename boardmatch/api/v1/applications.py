@@ -11,6 +11,7 @@ from boardmatch.infrastructure.repositories.memory import (
 )
 from boardmatch.models import Application, ApplicationStage
 
+from .authorization import require_active_user
 from .schemas import (
     ApplicationCreateRequest,
     ApplicationListResponse,
@@ -18,7 +19,7 @@ from .schemas import (
     ApplicationUpdateRequest,
 )
 
-router = APIRouter(tags=["applications"])
+router = APIRouter(tags=["applications"], dependencies=[Depends(require_active_user)])
 
 _application_repo = InMemoryApplicationRepository()
 _opportunity_repo = InMemoryOpportunityRepository()
