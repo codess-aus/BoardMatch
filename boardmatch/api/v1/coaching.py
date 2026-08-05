@@ -13,9 +13,10 @@ from boardmatch.drafts import Draft, InMemoryDraftRepository, new_draft_id
 
 from ... import coach, discovery, profiles
 from ...fit import score_opportunity
+from .authorization import require_active_user
 from .schemas import CoachingBoardCvResponse
 
-router = APIRouter(prefix="/coaching", tags=["coaching"])
+router = APIRouter(prefix="/coaching", tags=["coaching"], dependencies=[Depends(require_active_user)])
 
 _candidate = profiles.load_sample_candidate()
 _draft_repo = InMemoryDraftRepository()
