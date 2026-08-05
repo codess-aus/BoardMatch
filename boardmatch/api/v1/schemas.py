@@ -52,10 +52,33 @@ class OpportunityListResponse(BaseModel):
 
 
 class ApplicationResponse(BaseModel):
-    """Placeholder response for applications endpoint."""
+    """Response model for a single application."""
 
-    applications: list[dict] = []
-    message: str = "Applications endpoint - coming soon"
+    id: str
+    opportunity_id: str
+    stage: str
+    notes: str
+
+
+class ApplicationListResponse(BaseModel):
+    """Response model for listing applications."""
+
+    applications: list[ApplicationResponse]
+
+
+class ApplicationCreateRequest(BaseModel):
+    """Request body for creating an application."""
+
+    opportunity_id: str
+    stage: str = "researching"
+    notes: str = ""
+
+
+class ApplicationUpdateRequest(BaseModel):
+    """Request body for updating an application."""
+
+    stage: str | None = None
+    notes: str | None = None
 
 
 class ReadinessResponse(BaseModel):
@@ -71,3 +94,13 @@ class CoachingBoardCvResponse(BaseModel):
     kind: str
     engine: str
     content: str
+
+
+class PaginatedOpportunityResponse(BaseModel):
+    """Paginated listing of opportunities."""
+
+    items: list[OpportunityResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int

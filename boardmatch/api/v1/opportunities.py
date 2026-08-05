@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import math
+from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from boardmatch.auth import CurrentUser, get_required_user
 
 from ... import discovery, network, profiles
 from ...fit import rank, score_opportunity
-from ...models import FitResult, IntroPath
-from .schemas import IntroPathResponse, OpportunityListResponse, OpportunityResponse
+from ...infrastructure.repositories.memory import InMemoryOpportunityRepository
+from ...models import FitResult, IntroPath, Opportunity
+from .schemas import (
+    IntroPathResponse,
+    OpportunityListResponse,
+    OpportunityResponse,
+    PaginatedOpportunityResponse,
+)
 
 router = APIRouter(tags=["opportunities"])
 
 _candidate = profiles.load_sample_candidate()
+
+# Module-level repository seeded with discovery data
+_repo = InMemoryOpportunityRepository(discovery.discover())
 
 
 def _build_intro(intro: Optional[IntroPath]) -> Optional[IntroPathResponse]:
@@ -58,27 +69,57 @@ def _build_opportunity_response(
     )
 
 
-@router.get("/opportunities", response_model=OpportunityListResponse)
+def _build_opportunity_response_from_opp(opp: Opportunity) -> OpportunityResponse:
+    """Build response from opportunity with fit scoring."""
+    fit = score_opportunity(_candidate, opp)
+    intro = network.best_path(_candidate, opp)
+    return _build_opportunity_response(fit, intro)
+
+
+@router.get("/opportunities", response_model=PaginatedOpportunityResponse)
 def list_opportunities(
     user: CurrentUser = Depends(get_required_user),
-    paid_only: bool = False,
-    sector: Optional[str] = None,
-    min_fee_aud: Optional[int] = None,
-    limit: int = 20,
-) -> OpportunityListResponse:
-    """List opportunities with fit scoring for the current user."""
-    opportunities = discovery.discover(
-        paid_only=paid_only, sector=sector, min_fee_aud=min_fee_aud
-    )
-    fits = rank(_candidate, opportunities, limit=limit)
-    results = [
-        _build_opportunity_response(f, network.best_path(_candidate, f.opportunity))
-        for f in fits
-    ]
-    return OpportunityListResponse(
-        count=len(fits),
-        paid_count=sum(1 for f in fits if f.opportunity.is_paid),
-        results=results,
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(default=20, ge=1, le=100, description="Items per page (max 100)"),
+    status: Optional[str] = Query(default="open", description="Filter by status ('open' excludes expired)"),
+    paid_only: bool = Query(default=False, description="Only show paid opportunities"),
+    sector: Optional[str] = Query(default=None, description="Filter by sector"),
+    location: Optional[str] = Query(default=None, description="Filter by location"),
+    min_fee_aud: Optional[int] = Query(default=None, description="Minimum fee in AUD"),
+    closes_after: Optional[date] = Query(default=None, description="Closes on or after (YYYY-MM-DD)"),
+    closes_before: Optional[date] = Query(default=None, description="Closes on or before (YYYY-MM-DD)"),
+    source: Optional[str] = Query(default=None, description="Filter by source"),
+) -> PaginatedOpportunityResponse:
+    """List opportunities with pagination and composable filters."""
+    filters: dict[str, object] = {}
+    if status:
+        filters["status"] = status
+    if paid_only:
+        filters["paid_only"] = True
+    if sector:
+        filters["sector"] = sector
+    if location:
+        filters["location"] = location
+    if min_fee_aud is not None:
+        filters["min_fee"] = min_fee_aud
+    if closes_after is not None:
+        filters["closes_after"] = closes_after.isoformat()
+    if closes_before is not None:
+        filters["closes_before"] = closes_before.isoformat()
+    if source:
+        filters["source"] = source
+
+    result = _repo.search_paginated(page=page, page_size=page_size, **filters)
+
+    items = [_build_opportunity_response_from_opp(opp) for opp in result.items]
+    total_pages = math.ceil(result.total / page_size) if result.total > 0 else 0
+
+    return PaginatedOpportunityResponse(
+        items=items,
+        total=result.total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
 
 
