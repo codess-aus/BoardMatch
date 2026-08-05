@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from boardmatch.api import app
 from boardmatch.api.v1.coaching import _draft_repo
+from boardmatch.api.v1.rate_limit import draft_rate_limiter
 
 client = TestClient(app)
 
@@ -16,10 +17,14 @@ OTHER_USER_HEADER = {"X-Dev-User-Id": "other-user"}
 
 @pytest.fixture(autouse=True)
 def _clear_drafts():
-    """Reset draft store between tests."""
+    """Reset draft store and rate limiter between tests."""
     _draft_repo._store.clear()
+    draft_rate_limiter.reset("test-user-drafts")
+    draft_rate_limiter.reset("other-user")
     yield
     _draft_repo._store.clear()
+    draft_rate_limiter.reset("test-user-drafts")
+    draft_rate_limiter.reset("other-user")
 
 
 class TestBoardCvDraftPersistence:
