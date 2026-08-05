@@ -95,8 +95,11 @@ class InMemoryOpportunityRepository:
         return results
 
     def _sort_deterministic(self, results: list[Opportunity]) -> list[Opportunity]:
-        """Sort results deterministically by closes_on (ascending), then id."""
-        return sorted(results, key=lambda o: (o.closes_on or "9999-12-31", o.id))
+        """Sort results deterministically by fee descending, then title ascending."""
+        return sorted(
+            results,
+            key=lambda o: (-(o.fee_aud if o.fee_aud is not None else -1), o.title),
+        )
 
     def search(self, **filters: object) -> list[Opportunity]:
         """Return opportunities matching the requested filters.
