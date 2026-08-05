@@ -1,4 +1,4 @@
-"""Request ID and logging middleware."""
+"""Request ID and logging middleware with metrics integration."""
 
 from __future__ import annotations
 
@@ -8,6 +8,8 @@ import uuid
 
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+
+from boardmatch.monitoring import record_request_duration
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    """Logs method, route, status, duration, and request_id for each request."""
+    """Logs method, route, status, duration, and request_id for each request.
+
+    Also emits http_request_duration and http_error_count metrics.
+    """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
@@ -43,6 +48,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response.status_code,
             duration_ms,
             request_id,
+        )
+        # Emit metrics for request duration and errors
+        record_request_duration(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
         )
         return response
 
