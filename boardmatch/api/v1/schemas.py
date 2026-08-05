@@ -121,10 +121,6 @@ class ApplicationEventListResponse(BaseModel):
     events: list[ApplicationEventResponse]
 
 
-class ReadinessResponse(BaseModel):
-    """Placeholder response for readiness endpoint."""
-
-
 class ReadinessComponentsResponse(BaseModel):
     """Breakdown of readiness score components."""
 

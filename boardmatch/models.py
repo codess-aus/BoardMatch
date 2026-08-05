@@ -198,3 +198,19 @@ class FitEvaluation:
     rationale: tuple[str, ...]
     gap_actions: tuple[str, ...]
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class ReadinessSnapshot:
+    """A persisted readiness assessment for audit and history."""
+
+    id: str
+    user_id: str
+    scoring_version: str
+    readiness_score: int
+    credentials_score: int
+    skills_score: int
+    pipeline_score: int
+    stage_counts: dict[str, int]
+    next_actions: tuple[str, ...]
+    created_at: datetime

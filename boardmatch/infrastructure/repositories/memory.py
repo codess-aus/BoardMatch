@@ -13,6 +13,7 @@ from boardmatch.models import (
     Candidate,
     FitEvaluation,
     Opportunity,
+    ReadinessSnapshot,
     VALID_STAGE_TRANSITIONS,
 )
 
@@ -248,3 +249,20 @@ class InMemoryFitEvaluationRepository:
             if ev.id == evaluation_id:
                 return ev
         return None
+
+
+class InMemoryReadinessRepository:
+    """User-scoped in-memory store for readiness snapshots."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, list[ReadinessSnapshot]] = {}
+
+    def create(self, snapshot: ReadinessSnapshot) -> ReadinessSnapshot:
+        """Persist a new readiness snapshot."""
+        self._store.setdefault(snapshot.user_id, []).append(snapshot)
+        return snapshot
+
+    def list_for_user(self, user_id: str) -> list[ReadinessSnapshot]:
+        """Return all snapshots for a user, newest first."""
+        snapshots = self._store.get(user_id, [])
+        return sorted(snapshots, key=lambda s: s.created_at, reverse=True)
