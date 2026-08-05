@@ -65,7 +65,10 @@ class TestStructuredErrors:
             assert body.get("details") is None
         finally:
             # Clean up the test route
-            _app.router.routes = [r for r in _app.router.routes if getattr(r, "path", "") != "/test-internal-error"]
+            _app.router.routes = [
+                r for r in _app.router.routes
+                if getattr(r, "path", "") != "/test-internal-error"
+            ]
 
 
 class TestRequestID:
