@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from boardmatch.auth import CurrentUser, get_required_user
@@ -9,11 +12,19 @@ from boardmatch.infrastructure.repositories.memory import (
     InMemoryApplicationRepository,
     InMemoryOpportunityRepository,
 )
-from boardmatch.models import Application, ApplicationStage
+from boardmatch.models import (
+    Application,
+    ApplicationEvent,
+    ApplicationStage,
+    VALID_STAGE_TRANSITIONS,
+)
 
 from .authorization import require_active_user
 from .schemas import (
     ApplicationCreateRequest,
+    ApplicationEventCreateRequest,
+    ApplicationEventListResponse,
+    ApplicationEventResponse,
     ApplicationListResponse,
     ApplicationResponse,
     ApplicationUpdateRequest,
@@ -40,6 +51,37 @@ def _to_response(app: Application) -> ApplicationResponse:
         stage=app.stage.value,
         notes=app.notes,
     )
+
+
+def _to_event_response(event: ApplicationEvent) -> ApplicationEventResponse:
+    return ApplicationEventResponse(
+        id=event.id,
+        application_id=event.application_id,
+        previous_stage=event.previous_stage.value,
+        new_stage=event.new_stage.value,
+        timestamp=event.timestamp.isoformat(),
+        notes=event.notes,
+    )
+
+
+def _create_event(
+    repo: InMemoryApplicationRepository,
+    user_id: str,
+    application_id: str,
+    previous_stage: ApplicationStage,
+    new_stage: ApplicationStage,
+    notes: str = "",
+) -> ApplicationEvent:
+    """Create and persist an application event."""
+    event = ApplicationEvent(
+        id=str(uuid.uuid4()),
+        application_id=application_id,
+        previous_stage=previous_stage,
+        new_stage=new_stage,
+        timestamp=datetime.now(timezone.utc),
+        notes=notes,
+    )
+    return repo.add_event(user_id, event)
 
 
 @router.get("/applications", response_model=ApplicationListResponse)
@@ -122,6 +164,13 @@ def update_application(
     repo: InMemoryApplicationRepository = Depends(get_application_repo),
 ) -> ApplicationResponse:
     """Update stage and/or notes of an existing application."""
+    app = repo.get_by_id(user.user_id, application_id)
+    if app is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
     stage = None
     if body.stage is not None:
         try:
@@ -131,13 +180,26 @@ def update_application(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid stage: {body.stage}",
             )
+        # Validate transition
+        allowed = VALID_STAGE_TRANSITIONS.get(app.stage, set())
+        if stage != app.stage and stage not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid transition from {app.stage.value} to {stage.value}",
+            )
 
+    previous_stage = app.stage
     updated = repo.update(user.user_id, application_id, stage=stage, notes=body.notes)
     if updated is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
+
+    # Auto-create event on stage change
+    if stage is not None and stage != previous_stage:
+        _create_event(repo, user.user_id, application_id, previous_stage, stage)
+
     return _to_response(updated)
 
 
@@ -155,3 +217,79 @@ def delete_application(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
+
+
+# --- Event endpoints ---
+
+
+@router.post(
+    "/applications/{application_id}/events",
+    response_model=ApplicationEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_application_event(
+    application_id: str,
+    body: ApplicationEventCreateRequest,
+    user: CurrentUser = Depends(get_required_user),
+    repo: InMemoryApplicationRepository = Depends(get_application_repo),
+) -> ApplicationEventResponse:
+    """Create a stage transition event for an application."""
+    app = repo.get_by_id(user.user_id, application_id)
+    if app is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    try:
+        new_stage = ApplicationStage(body.new_stage)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid stage: {body.new_stage}",
+        )
+
+    # Validate transition
+    allowed = VALID_STAGE_TRANSITIONS.get(app.stage, set())
+    if new_stage != app.stage and new_stage not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid transition from {app.stage.value} to {new_stage.value}",
+        )
+
+    if new_stage == app.stage:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New stage must differ from current stage",
+        )
+
+    previous_stage = app.stage
+    # Update the application stage
+    repo.update(user.user_id, application_id, stage=new_stage)
+    # Create the event
+    event = _create_event(
+        repo, user.user_id, application_id, previous_stage, new_stage, body.notes
+    )
+    return _to_event_response(event)
+
+
+@router.get(
+    "/applications/{application_id}/events",
+    response_model=ApplicationEventListResponse,
+)
+def list_application_events(
+    application_id: str,
+    user: CurrentUser = Depends(get_required_user),
+    repo: InMemoryApplicationRepository = Depends(get_application_repo),
+) -> ApplicationEventListResponse:
+    """List all events for an application in chronological order."""
+    app = repo.get_by_id(user.user_id, application_id)
+    if app is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+    events = repo.list_events(user.user_id, application_id)
+    return ApplicationEventListResponse(
+        events=[_to_event_response(e) for e in events]
+    )

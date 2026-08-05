@@ -221,12 +221,12 @@ class TestUpdateApplication:
         app_id = create_resp.json()["id"]
         resp = client.patch(
             f"/api/v1/applications/{app_id}",
-            json={"stage": "interviewing", "notes": "Going well"},
+            json={"stage": "applied", "notes": "Going well"},
             headers=_headers(),
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["stage"] == "interviewing"
+        assert data["stage"] == "applied"
         assert data["notes"] == "Going well"
 
     def test_invalid_stage(self, client: TestClient):
