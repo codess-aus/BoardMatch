@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from boardmatch.domain.repositories import PaginatedResult
-from boardmatch.models import Candidate, Opportunity
+from boardmatch.models import Application, ApplicationStage, Candidate, Opportunity
 
 
 class InMemoryCandidateRepository:
@@ -131,3 +132,51 @@ class InMemoryOpportunityRepository:
         start = (page - 1) * page_size
         end = start + page_size
         return PaginatedResult(items=results[start:end], total=total)
+
+
+class InMemoryApplicationRepository:
+    """User-scoped in-memory store for board applications."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, dict[str, Application]] = {}
+
+    def list_for_user(self, user_id: str) -> list[Application]:
+        """Return all applications for a user."""
+        return list(self._store.get(user_id, {}).values())
+
+    def create(self, user_id: str, application: Application) -> Application:
+        """Persist a new application, assigning an id."""
+        if not application.id:
+            application.id = str(uuid.uuid4())
+        self._store.setdefault(user_id, {})[application.id] = application
+        return application
+
+    def get_by_id(self, user_id: str, application_id: str) -> Application | None:
+        """Return a single application owned by the user."""
+        return self._store.get(user_id, {}).get(application_id)
+
+    def update(
+        self,
+        user_id: str,
+        application_id: str,
+        *,
+        stage: ApplicationStage | None = None,
+        notes: str | None = None,
+    ) -> Application | None:
+        """Update fields on an existing application."""
+        app = self.get_by_id(user_id, application_id)
+        if app is None:
+            return None
+        if stage is not None:
+            app.stage = stage
+        if notes is not None:
+            app.notes = notes
+        return app
+
+    def delete(self, user_id: str, application_id: str) -> bool:
+        """Delete an application. Returns True if it existed."""
+        user_apps = self._store.get(user_id, {})
+        if application_id in user_apps:
+            del user_apps[application_id]
+            return True
+        return False
