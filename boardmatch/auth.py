@@ -37,6 +37,7 @@ class AuthProvider(Protocol):
 
 
 _DEV_USER_HEADER = "X-Dev-User-Id"
+_DEV_ROLES_HEADER = "X-Dev-User-Roles"
 _DEV_DEFAULT_USER = CurrentUser(
     user_id="dev-user-001",
     email="dev@boardmatch.local",
@@ -57,11 +58,13 @@ class DevAuthProvider:
         user_id = request.headers.get(_DEV_USER_HEADER)
         if user_id is None:
             return _DEV_DEFAULT_USER
+        roles_header = request.headers.get(_DEV_ROLES_HEADER)
+        roles = roles_header.split(",") if roles_header else ["user"]
         return CurrentUser(
             user_id=user_id,
             email=f"{user_id}@boardmatch.local",
             display_name=user_id,
-            roles=["user"],
+            roles=roles,
         )
 
 
@@ -122,11 +125,13 @@ def get_required_user(
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        roles_header = request.headers.get(_DEV_ROLES_HEADER)
+        roles = roles_header.split(",") if roles_header else ["user"]
         return CurrentUser(
             user_id=user_id,
             email=f"{user_id}@boardmatch.local",
             display_name=user_id,
-            roles=["user"],
+            roles=roles,
         )
     provider = _get_provider(settings)
     return provider.authenticate(request)
