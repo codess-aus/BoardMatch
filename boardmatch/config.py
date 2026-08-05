@@ -30,9 +30,11 @@ class Settings(BaseModel):
     azure_openai_deployment: str | None = None
     azure_storage_account: str | None = None
     storage_encryption_required: bool = True
-    log_level: str = "INFO"
     document_retention_days: int = 365
     extracted_text_retention_days: int = 90
+    audit_log_retention_days: int = 90
+    network_data_retention_days: int = 365
+    log_level: str = "INFO"
 
     @field_validator(
         "auth_issuer",
@@ -141,6 +143,7 @@ _ENVIRONMENT_FIELDS = {
     "LOG_LEVEL": "log_level",
     "DOCUMENT_RETENTION_DAYS": "document_retention_days",
     "EXTRACTED_TEXT_RETENTION_DAYS": "extracted_text_retention_days",
+    "AUDIT_LOG_RETENTION_DAYS": "audit_log_retention_days",
 }
 
 

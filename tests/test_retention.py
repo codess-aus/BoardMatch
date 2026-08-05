@@ -2,520 +2,366 @@
 
 from __future__ import annotations
 
-import uuid
+import logging
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
 
 import pytest
 
-from boardmatch.retention import (
-    CleanupResult,
-    DEFAULT_DOCUMENT_RETENTION_DAYS,
-    DEFAULT_EXTRACTED_TEXT_RETENTION_DAYS,
-    ExtractedText,
-    InMemoryExtractedTextRepository,
-    InMemoryNetworkDataRepository,
-    NetworkRecord,
-    RetentionCategory,
-    RetentionConfig,
-    RetentionManager,
-    redact_log_message,
-    redact_sensitive_fields,
-    revoke_integration_token,
-    validate_storage_encryption,
-    SENSITIVE_FIELDS,
-)
-from boardmatch.documents import Document, DocumentStatus, InMemoryDocumentRepository
+from boardmatch.config import AppEnvironment, Settings
+from boardmatch.documents import Document, InMemoryDocumentRepository
 from boardmatch.integrations import (
     InMemoryIntegrationRepository,
     Integration,
     IntegrationStatus,
+    hash_token,
+)
+from boardmatch.retention import (
+    DEFAULT_RETENTION_POLICY,
+    InMemoryExtractedTextRepository,
+    InMemoryNetworkRepository,
+    RedactingLogFilter,
+    RetentionPolicy,
+    RetentionService,
+    StorageEncryptionError,
+    delete_network_data,
+    export_after_deletion,
+    redact_sensitive_data,
+    revoke_integration_token,
+    validate_storage_encryption,
 )
 from boardmatch.storage import LocalStorageBackend
 
 
-class TestRetentionConfig:
-    """Test retention configuration."""
+class TestRetentionPolicyConfiguration:
+    """Retention periods are configurable."""
 
-    def test_default_retention_periods(self):
-        config = RetentionConfig()
-        assert config.document_retention_days == 365
-        assert config.extracted_text_retention_days == 90
-        assert config.network_data_retention_days == 180
-        assert config.audit_log_retention_days == 90
+    def test_default_retention_policy(self):
+        policy = DEFAULT_RETENTION_POLICY
+        assert policy.document_retention_days == 365
+        assert policy.extracted_text_retention_days == 90
+        assert policy.audit_log_retention_days == 90
+        assert policy.network_data_retention_days == 365
 
-    def test_custom_retention_periods(self):
-        config = RetentionConfig(
-            document_retention_days=30,
-            extracted_text_retention_days=7,
+    def test_custom_retention_policy(self):
+        policy = RetentionPolicy(
+            document_retention_days=180,
+            extracted_text_retention_days=30,
+            audit_log_retention_days=60,
+            network_data_retention_days=90,
         )
-        assert config.document_retention_days == 30
-        assert config.extracted_text_retention_days == 7
+        assert policy.document_retention_days == 180
+        assert policy.extracted_text_retention_days == 30
+        assert policy.audit_log_retention_days == 60
+        assert policy.network_data_retention_days == 90
 
-    def test_policies_list(self):
-        config = RetentionConfig()
-        policies = config.policies
-        assert len(policies) == 4
-        categories = {p.category for p in policies}
-        assert RetentionCategory.DOCUMENT in categories
-        assert RetentionCategory.EXTRACTED_TEXT in categories
-        assert RetentionCategory.NETWORK_DATA in categories
-        assert RetentionCategory.AUDIT_LOG in categories
-
-    def test_get_policy_by_category(self):
-        config = RetentionConfig(document_retention_days=60)
-        policy = config.get_policy(RetentionCategory.DOCUMENT)
-        assert policy.retention_days == 60
+    def test_config_retention_settings(self):
+        settings = Settings(
+            document_retention_days=180,
+            extracted_text_retention_days=30,
+            audit_log_retention_days=60,
+            network_data_retention_days=90,
+        )
+        assert settings.document_retention_days == 180
+        assert settings.extracted_text_retention_days == 30
+        assert settings.audit_log_retention_days == 60
+        assert settings.network_data_retention_days == 90
 
 
 class TestRetentionCleanupSelection:
-    """Test that cleanup correctly selects expired items."""
+    """Retention cleanup correctly identifies expired data."""
 
-    def test_expired_documents_selected(self):
-        """Documents past retention period are selected for cleanup."""
+    def test_selects_expired_documents(self):
         doc_repo = InMemoryDocumentRepository()
-        config = RetentionConfig(document_retention_days=30)
-
-        # Add an expired document (uploaded 60 days ago)
-        expired_doc = Document(
-            id="doc-expired",
-            user_id="user1",
-            filename="old.pdf",
-            content_type="application/pdf",
-            size_bytes=1000,
-            content_hash="abc123",
-            storage_path="user1/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
-        )
-        doc_repo.save(expired_doc)
-
-        # Add a current document (uploaded today)
-        current_doc = Document(
-            id="doc-current",
-            user_id="user1",
-            filename="new.pdf",
-            content_type="application/pdf",
-            size_bytes=2000,
-            content_hash="def456",
-            storage_path="user1/new.pdf",
-            uploaded_at=datetime.now(timezone.utc),
-        )
-        doc_repo.save(current_doc)
-
-        manager = RetentionManager(config=config, document_repo=doc_repo)
-        expired = manager.get_expired_documents()
-
+        storage = LocalStorageBackend()
+        policy = RetentionPolicy(document_retention_days=30)
+        old_doc = Document(id="old-doc", user_id="user-1", filename="old.pdf",
+            content_type="application/pdf", size_bytes=1024,
+            content_hash="abc123", storage_path="docs/old.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60))
+        doc_repo.save(old_doc)
+        recent_doc = Document(id="recent-doc", user_id="user-1", filename="recent.pdf",
+            content_type="application/pdf", size_bytes=1024,
+            content_hash="def456", storage_path="docs/recent.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10))
+        doc_repo.save(recent_doc)
+        service = RetentionService(policy=policy, document_repo=doc_repo, storage_backend=storage)
+        expired = service.get_expired_documents("user-1")
         assert len(expired) == 1
-        assert expired[0].id == "doc-expired"
+        assert expired[0].id == "old-doc"
 
-    def test_non_expired_documents_not_selected(self):
-        """Documents within retention period are not selected."""
+    def test_selects_expired_extracted_texts(self):
+        text_repo = InMemoryExtractedTextRepository()
+        policy = RetentionPolicy(extracted_text_retention_days=30)
+        text_repo.save("doc-old", "Old CV text content", "user-1")
+        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
+        text_repo.save("doc-recent", "Recent CV text", "user-1")
+        service = RetentionService(policy=policy, extracted_text_repo=text_repo)
+        expired = service.get_expired_extracted_texts("user-1")
+        assert len(expired) == 1
+        assert expired[0] == "doc-old"
+
+    def test_no_expired_when_within_retention(self):
         doc_repo = InMemoryDocumentRepository()
-        config = RetentionConfig(document_retention_days=30)
-
-        current_doc = Document(
-            id="doc-current",
-            user_id="user1",
-            filename="new.pdf",
-            content_type="application/pdf",
-            size_bytes=2000,
-            content_hash="def456",
-            storage_path="user1/new.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10),
-        )
-        doc_repo.save(current_doc)
-
-        manager = RetentionManager(config=config, document_repo=doc_repo)
-        expired = manager.get_expired_documents()
+        policy = RetentionPolicy(document_retention_days=365)
+        doc = Document(id="fresh-doc", user_id="user-1", filename="fresh.pdf",
+            content_type="application/pdf", size_bytes=1024,
+            content_hash="abc", storage_path="docs/fresh.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10))
+        doc_repo.save(doc)
+        service = RetentionService(policy=policy, document_repo=doc_repo)
+        expired = service.get_expired_documents("user-1")
         assert len(expired) == 0
 
 
 class TestExpiredDocumentDeletion:
-    """Test that expired documents are properly deleted."""
+    """Expired documents are properly deleted."""
 
-    def test_cleanup_deletes_expired_documents(self):
-        """Expired documents are deleted from both repo and storage."""
+    def test_deletes_expired_document_and_storage(self):
         doc_repo = InMemoryDocumentRepository()
-        storage = MagicMock(spec=LocalStorageBackend)
-        config = RetentionConfig(document_retention_days=30)
+        storage = LocalStorageBackend()
+        policy = RetentionPolicy(document_retention_days=30)
+        storage.save("docs/old.pdf", b"old document content")
+        old_doc = Document(id="old-doc", user_id="user-1", filename="old.pdf",
+            content_type="application/pdf", size_bytes=1024,
+            content_hash="abc123", storage_path="docs/old.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60))
+        doc_repo.save(old_doc)
+        service = RetentionService(policy=policy, document_repo=doc_repo, storage_backend=storage)
+        deleted = service.cleanup_expired_documents("user-1")
+        assert deleted == 1
+        assert doc_repo.get_by_id("old-doc") is None
+        assert not storage.exists("docs/old.pdf")
 
-        expired_doc = Document(
-            id="doc-expired",
-            user_id="user1",
-            filename="old.pdf",
-            content_type="application/pdf",
-            size_bytes=1000,
-            content_hash="abc123",
-            storage_path="user1/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
-        )
-        doc_repo.save(expired_doc)
-
-        manager = RetentionManager(
-            config=config,
-            document_repo=doc_repo,
-            storage_backend=storage,
-        )
-        result = manager.cleanup_expired_documents()
-
-        assert result.items_deleted == 1
-        assert result.category == RetentionCategory.DOCUMENT
-        storage.delete.assert_called_once_with("user1/old.pdf")
-        assert doc_repo.get_by_id("doc-expired") is None
-
-    def test_cleanup_keeps_current_documents(self):
-        """Current documents survive cleanup."""
-        doc_repo = InMemoryDocumentRepository()
-        storage = MagicMock(spec=LocalStorageBackend)
-        config = RetentionConfig(document_retention_days=30)
-
-        current_doc = Document(
-            id="doc-current",
-            user_id="user1",
-            filename="new.pdf",
-            content_type="application/pdf",
-            size_bytes=2000,
-            content_hash="def456",
-            storage_path="user1/new.pdf",
-            uploaded_at=datetime.now(timezone.utc),
-        )
-        doc_repo.save(current_doc)
-
-        manager = RetentionManager(
-            config=config,
-            document_repo=doc_repo,
-            storage_backend=storage,
-        )
-        result = manager.cleanup_expired_documents()
-
-        assert result.items_deleted == 0
-        assert doc_repo.get_by_id("doc-current") is not None
-        storage.delete.assert_not_called()
-
-
-class TestExtractedTextRetention:
-    """Test extracted text retention cleanup."""
-
-    def test_expired_extracted_text_deleted(self):
-        """Extracted text past retention is deleted."""
+    def test_deletes_expired_extracted_text(self):
         text_repo = InMemoryExtractedTextRepository()
-        config = RetentionConfig(extracted_text_retention_days=30)
+        policy = RetentionPolicy(extracted_text_retention_days=30)
+        text_repo.save("doc-old", "Extracted CV content here", "user-1")
+        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
+        service = RetentionService(policy=policy, extracted_text_repo=text_repo)
+        deleted = service.cleanup_expired_texts("user-1")
+        assert deleted == 1
+        assert text_repo.get("doc-old") is None
 
-        # Expired record
-        old_text = ExtractedText(
-            id="text-old",
-            document_id="doc1",
-            user_id="user1",
-            text="Old CV content",
-            extracted_at=datetime.now(timezone.utc) - timedelta(days=60),
-        )
-        text_repo.save(old_text)
-
-        # Current record
-        new_text = ExtractedText(
-            id="text-new",
-            document_id="doc2",
-            user_id="user1",
-            text="New CV content",
-            extracted_at=datetime.now(timezone.utc),
-        )
-        text_repo.save(new_text)
-
-        manager = RetentionManager(
-            config=config,
-            extracted_text_repo=text_repo,
-        )
-        result = manager.cleanup_expired_extracted_text()
-
-        assert result.items_deleted == 1
-        assert result.category == RetentionCategory.EXTRACTED_TEXT
-        assert text_repo.get_by_document("doc1") is None
-        assert text_repo.get_by_document("doc2") is not None
+    def test_full_cleanup_run(self):
+        doc_repo = InMemoryDocumentRepository()
+        text_repo = InMemoryExtractedTextRepository()
+        storage = LocalStorageBackend()
+        policy = RetentionPolicy(document_retention_days=30, extracted_text_retention_days=30)
+        storage.save("docs/old.pdf", b"content")
+        doc_repo.save(Document(id="old-doc", user_id="user-1", filename="old.pdf",
+            content_type="application/pdf", size_bytes=1024, content_hash="hash1",
+            storage_path="docs/old.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60)))
+        text_repo.save("old-text-doc", "text", "user-1")
+        text_repo._store["old-text-doc"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
+        service = RetentionService(policy=policy, document_repo=doc_repo,
+            storage_backend=storage, extracted_text_repo=text_repo)
+        result = service.run_cleanup("user-1")
+        assert result.documents_deleted == 1
+        assert result.extracted_texts_deleted == 1
 
 
 class TestNetworkDataDeletion:
-    """Test network data deletion support."""
+    """Network data deletion is supported."""
 
-    def test_delete_network_data_for_user(self):
-        """All network data for a user is deleted on request."""
-        network_repo = InMemoryNetworkDataRepository()
-        config = RetentionConfig()
-
-        # Add records for two users
-        network_repo.save(NetworkRecord(
-            id="net1", user_id="user1", connection_name="Alice",
-            relationship="colleague",
-        ))
-        network_repo.save(NetworkRecord(
-            id="net2", user_id="user1", connection_name="Bob",
-            relationship="mentor",
-        ))
-        network_repo.save(NetworkRecord(
-            id="net3", user_id="user2", connection_name="Charlie",
-            relationship="friend",
-        ))
-
-        manager = RetentionManager(config=config, network_repo=network_repo)
-        deleted = manager.delete_network_data("user1")
-
+    def test_delete_all_network_data(self):
+        repo = InMemoryNetworkRepository()
+        repo.save("conn-1", "user-1", {"name": "Alice", "relationship": "colleague"})
+        repo.save("conn-2", "user-1", {"name": "Bob", "relationship": "friend"})
+        repo.save("conn-3", "user-2", {"name": "Charlie", "relationship": "mentor"})
+        deleted = delete_network_data("user-1", repo)
         assert deleted == 2
-        assert network_repo.list_by_user("user1") == []
-        assert len(network_repo.list_by_user("user2")) == 1
+        assert repo.list_by_user("user-1") == []
+        assert len(repo.list_by_user("user-2")) == 1
 
-    def test_delete_network_data_empty(self):
-        """Deleting for a user with no data returns 0."""
-        network_repo = InMemoryNetworkDataRepository()
-        config = RetentionConfig()
-
-        manager = RetentionManager(config=config, network_repo=network_repo)
-        deleted = manager.delete_network_data("nonexistent")
+    def test_delete_empty_network(self):
+        repo = InMemoryNetworkRepository()
+        deleted = delete_network_data("user-1", repo)
         assert deleted == 0
 
 
 class TestTokenRevocation:
-    """Test integration token revocation."""
+    """Integration tokens are revocable."""
 
     def test_revoke_active_token(self):
-        """Active integration tokens can be revoked."""
         repo = InMemoryIntegrationRepository()
-        integration = Integration(
-            user_id="user1",
-            provider="microsoft",
-            status=IntegrationStatus.ACTIVE,
-            scopes=["User.Read"],
-            token_hash="hashed_token_value",
-        )
+        integration = Integration(user_id="user-1", provider="microsoft",
+            status=IntegrationStatus.ACTIVE, scopes=["User.Read"],
+            token_hash=hash_token("some-token"))
         repo.save(integration)
-
-        result = revoke_integration_token("user1", "microsoft", repo)
-
+        result = revoke_integration_token("user-1", "microsoft", repo)
         assert result is True
-        revoked = repo.get("user1", "microsoft")
-        assert revoked is not None
-        assert revoked.status == IntegrationStatus.REVOKED
-        assert revoked.token_hash is None
-        assert revoked.revoked_at is not None
-
-    def test_revoke_nonexistent_token(self):
-        """Revoking a non-existent integration returns False."""
-        repo = InMemoryIntegrationRepository()
-        result = revoke_integration_token("user1", "microsoft", repo)
-        assert result is False
-
-    def test_revoke_already_revoked_token(self):
-        """Revoking an already-revoked integration returns False."""
-        repo = InMemoryIntegrationRepository()
-        integration = Integration(
-            user_id="user1",
-            provider="microsoft",
-            status=IntegrationStatus.REVOKED,
-            scopes=["User.Read"],
-            token_hash=None,
-            revoked_at=datetime.now(timezone.utc),
-        )
-        repo.save(integration)
-
-        result = revoke_integration_token("user1", "microsoft", repo)
-        assert result is False
+        updated = repo.get("user-1", "microsoft")
+        assert updated is not None
+        assert updated.status == IntegrationStatus.REVOKED
+        assert updated.token_hash is None
+        assert updated.revoked_at is not None
 
     def test_revoke_creates_audit_event(self):
-        """Token revocation creates an audit trail."""
         repo = InMemoryIntegrationRepository()
-        integration = Integration(
-            user_id="user1",
-            provider="microsoft",
-            status=IntegrationStatus.ACTIVE,
-            scopes=["User.Read", "Mail.Read"],
-            token_hash="hashed_token",
-        )
+        integration = Integration(user_id="user-1", provider="microsoft",
+            status=IntegrationStatus.ACTIVE, scopes=["User.Read", "Mail.Read"],
+            token_hash=hash_token("token-1"))
         repo.save(integration)
-
-        revoke_integration_token("user1", "microsoft", repo)
-
-        events = repo.get_audit_events("user1")
+        revoke_integration_token("user-1", "microsoft", repo)
+        events = repo.get_audit_events("user-1")
         assert len(events) == 1
-        assert events[0].event_type.value == "consent_revoked"
+        assert events[0].event_type == "consent_revoked"
         assert events[0].provider == "microsoft"
+
+    def test_revoke_already_revoked(self):
+        repo = InMemoryIntegrationRepository()
+        integration = Integration(user_id="user-1", provider="microsoft",
+            status=IntegrationStatus.REVOKED,
+            revoked_at=datetime.now(timezone.utc), token_hash=None)
+        repo.save(integration)
+        result = revoke_integration_token("user-1", "microsoft", repo)
+        assert result is False
+
+    def test_revoke_nonexistent(self):
+        repo = InMemoryIntegrationRepository()
+        result = revoke_integration_token("user-1", "microsoft", repo)
+        assert result is False
 
 
 class TestLogRedaction:
-    """Test privacy-sensitive log redaction."""
+    """Privacy-sensitive fields are excluded from logs."""
 
-    def test_redact_sensitive_dict_fields(self):
-        """Sensitive fields in dictionaries are masked."""
-        data = {
-            "user_id": "user1",
-            "email": "john@example.com",
-            "phone": "+61412345678",
-            "name": "John Doe",
-            "token": "secret-token-value",
-            "password": "hunter2",
-        }
-        redacted = redact_sensitive_fields(data)
+    def test_redacts_email(self):
+        text = "User email is alice@example.com and she logged in"
+        result = redact_sensitive_data(text)
+        assert "alice@example.com" not in result
+        assert "[EMAIL_REDACTED]" in result
 
-        assert redacted["user_id"] == "user1"
-        assert redacted["name"] == "John Doe"
-        assert redacted["email"] == "***REDACTED***"
-        assert redacted["phone"] == "***REDACTED***"
-        assert redacted["token"] == "***REDACTED***"
-        assert redacted["password"] == "***REDACTED***"
+    def test_redacts_phone_number(self):
+        text = "Contact phone: 555-123-4567"
+        result = redact_sensitive_data(text)
+        assert "555-123-4567" not in result
+        assert "[PHONE_REDACTED]" in result
 
-    def test_redact_nested_dict(self):
-        """Nested dictionaries are recursively redacted."""
-        data = {
-            "user": {
-                "name": "Jane",
-                "email": "jane@example.com",
-            },
-            "action": "login",
-        }
-        redacted = redact_sensitive_fields(data)
+    def test_redacts_token(self):
+        text = "token_hash: abc123def456"
+        result = redact_sensitive_data(text)
+        assert "abc123def456" not in result
+        assert "[TOKEN_REDACTED]" in result
 
-        assert redacted["user"]["name"] == "Jane"
-        assert redacted["user"]["email"] == "***REDACTED***"
-        assert redacted["action"] == "login"
+    def test_preserves_non_sensitive_data(self):
+        text = "User profile was updated successfully"
+        result = redact_sensitive_data(text)
+        assert result == text
 
-    def test_redact_email_in_log_message(self):
-        """Email addresses in log strings are redacted."""
-        msg = "User john@example.com logged in from 1.2.3.4"
-        redacted = redact_log_message(msg)
-        assert "john@example.com" not in redacted
-        assert "[REDACTED_EMAIL]" in redacted
+    def test_redacting_log_filter(self):
+        log_filter = RedactingLogFilter()
+        record = logging.LogRecord(name="test", level=logging.INFO, pathname="",
+            lineno=0, msg="User alice@example.com logged in", args=None, exc_info=None)
+        log_filter.filter(record)
+        assert "alice@example.com" not in record.msg
+        assert "[EMAIL_REDACTED]" in record.msg
 
-    def test_redact_phone_in_log_message(self):
-        """Phone numbers in log strings are redacted."""
-        msg = "Contact number: +61 412 345 678"
-        redacted = redact_log_message(msg)
-        assert "+61 412 345 678" not in redacted
-        assert "[REDACTED_PHONE]" in redacted
-
-    def test_no_redaction_for_safe_message(self):
-        """Messages without PII pass through unchanged."""
-        msg = "Application created for opportunity opp-123"
-        redacted = redact_log_message(msg)
-        assert redacted == msg
-
-    def test_redact_list_with_dicts(self):
-        """Lists containing dicts are redacted recursively."""
-        data = {
-            "users": [
-                {"name": "Alice", "email": "alice@example.com"},
-                {"name": "Bob", "email": "bob@example.com"},
-            ]
-        }
-        redacted = redact_sensitive_fields(data)
-        assert redacted["users"][0]["email"] == "***REDACTED***"
-        assert redacted["users"][1]["email"] == "***REDACTED***"
-        assert redacted["users"][0]["name"] == "Alice"
-
-
-class TestExportAfterDeletion:
-    """Test that data export returns empty after deletion request."""
-
-    def test_export_after_network_deletion(self):
-        """After network data is deleted, user sees no network records."""
-        network_repo = InMemoryNetworkDataRepository()
-        config = RetentionConfig()
-
-        network_repo.save(NetworkRecord(
-            id="net1", user_id="user1", connection_name="Alice",
-            relationship="colleague",
-        ))
-
-        manager = RetentionManager(config=config, network_repo=network_repo)
-        manager.delete_network_data("user1")
-
-        # After deletion, listing returns empty
-        records = network_repo.list_by_user("user1")
-        assert records == []
-
-    def test_export_after_document_deletion(self):
-        """After document cleanup, expired docs are gone from exports."""
-        doc_repo = InMemoryDocumentRepository()
-        storage = MagicMock(spec=LocalStorageBackend)
-        config = RetentionConfig(document_retention_days=30)
-
-        expired_doc = Document(
-            id="doc-expired",
-            user_id="user1",
-            filename="old.pdf",
-            content_type="application/pdf",
-            size_bytes=1000,
-            content_hash="abc123",
-            storage_path="user1/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
-        )
-        doc_repo.save(expired_doc)
-
-        manager = RetentionManager(
-            config=config,
-            document_repo=doc_repo,
-            storage_backend=storage,
-        )
-        manager.cleanup_expired_documents()
-
-        # Export for user should not contain deleted doc
-        remaining = doc_repo.list_by_user("user1")
-        assert len(remaining) == 0
+    def test_redacting_log_filter_with_args(self):
+        log_filter = RedactingLogFilter()
+        record = logging.LogRecord(name="test", level=logging.INFO, pathname="",
+            lineno=0, msg="User %s logged in", args=("alice@example.com",), exc_info=None)
+        log_filter.filter(record)
+        assert "alice@example.com" not in str(record.args)
 
 
 class TestStorageEncryption:
-    """Test production storage encryption validation."""
+    """Production storage encryption is required."""
 
-    def test_production_requires_storage_account(self):
-        """Production environment requires a storage account for encryption."""
-        assert validate_storage_encryption("production", "boardmatchdata") is True
-        assert validate_storage_encryption("production", None) is False
-        assert validate_storage_encryption("production", "") is False
+    def test_production_requires_encryption(self):
+        result = validate_storage_encryption(Settings(
+            app_env=AppEnvironment.PRODUCTION,
+            database_url="postgresql://db:5432/bm",
+            auth_issuer="https://login.microsoftonline.com/tenant/v2.0",
+            auth_audience="api://boardmatch",
+            azure_openai_endpoint="https://openai.azure.com",
+            azure_openai_api_key="secret-key",
+            azure_openai_deployment="gpt-4",
+            azure_storage_account="boardmatchstorage"))
+        assert result is True
 
-    def test_non_production_always_valid(self):
-        """Non-production environments pass encryption check."""
-        assert validate_storage_encryption("local", None) is True
-        assert validate_storage_encryption("test", None) is True
+    def test_local_does_not_require_encryption(self):
+        settings = Settings(app_env=AppEnvironment.LOCAL)
+        assert validate_storage_encryption(settings) is True
+
+    def test_config_production_storage_encryption_validation(self):
+        with pytest.raises(ValueError, match="AZURE_STORAGE_ACCOUNT"):
+            Settings(
+                app_env=AppEnvironment.PRODUCTION,
+                database_url="postgresql://db:5432/bm",
+                auth_issuer="https://login.microsoftonline.com/tenant/v2.0",
+                auth_audience="api://boardmatch",
+                azure_openai_endpoint="https://openai.azure.com",
+                azure_openai_api_key="secret-key",
+                azure_openai_deployment="gpt-4",
+                azure_storage_account=None,
+                storage_encryption_required=True)
 
 
-class TestRunAllCleanups:
-    """Test the combined cleanup operation."""
+class TestExportAfterDeletion:
+    """Export after deletion request returns appropriate response."""
 
-    def test_run_all_cleanups(self):
-        """Running all cleanups returns results for each category."""
+    def test_export_after_full_deletion(self):
+        doc_repo = InMemoryDocumentRepository()
+        result = export_after_deletion("user-1", doc_repo)
+        assert result["user_id"] == "user-1"
+        assert result["status"] == "deletion_completed"
+        assert result["remaining_documents"] == 0
+
+    def test_export_shows_remaining_if_partial(self):
+        doc_repo = InMemoryDocumentRepository()
+        doc_repo.save(Document(id="doc-1", user_id="user-1", filename="remaining.pdf",
+            content_type="application/pdf", size_bytes=512, content_hash="hash",
+            storage_path="docs/remaining.pdf"))
+        result = export_after_deletion("user-1", doc_repo)
+        assert result["remaining_documents"] == 1
+
+    def test_delete_all_user_data(self):
         doc_repo = InMemoryDocumentRepository()
         text_repo = InMemoryExtractedTextRepository()
-        config = RetentionConfig(
-            document_retention_days=30,
-            extracted_text_retention_days=30,
-        )
+        storage = LocalStorageBackend()
+        storage.save("docs/a.pdf", b"content a")
+        storage.save("docs/b.pdf", b"content b")
+        doc_repo.save(Document(id="doc-a", user_id="user-1", filename="a.pdf",
+            content_type="application/pdf", size_bytes=100, content_hash="h1",
+            storage_path="docs/a.pdf"))
+        doc_repo.save(Document(id="doc-b", user_id="user-1", filename="b.pdf",
+            content_type="application/pdf", size_bytes=200, content_hash="h2",
+            storage_path="docs/b.pdf"))
+        text_repo.save("doc-a", "CV text A", "user-1")
+        text_repo.save("doc-b", "CV text B", "user-1")
+        service = RetentionService(document_repo=doc_repo, storage_backend=storage,
+            extracted_text_repo=text_repo)
+        result = service.delete_all_user_data("user-1")
+        assert result.documents_deleted == 2
+        assert result.extracted_texts_deleted == 2
+        assert doc_repo.list_by_user("user-1") == []
+        assert text_repo.list_by_user("user-1") == []
 
-        # Add expired items
-        doc_repo.save(Document(
-            id="doc-old",
-            user_id="user1",
-            filename="old.pdf",
-            content_type="application/pdf",
-            size_bytes=1000,
-            content_hash="abc",
-            storage_path="user1/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
-        ))
-        text_repo.save(ExtractedText(
-            id="text-old",
-            document_id="doc-old",
-            user_id="user1",
-            text="Old text",
-            extracted_at=datetime.now(timezone.utc) - timedelta(days=60),
-        ))
 
-        storage = MagicMock(spec=LocalStorageBackend)
-        manager = RetentionManager(
-            config=config,
-            document_repo=doc_repo,
-            extracted_text_repo=text_repo,
-            storage_backend=storage,
-        )
-        results = manager.run_all_cleanups()
+class TestExtractedTextRetention:
+    """Extracted CV text has a defined retention period."""
 
-        assert len(results) == 2
-        assert results[0].category == RetentionCategory.DOCUMENT
-        assert results[0].items_deleted == 1
-        assert results[1].category == RetentionCategory.EXTRACTED_TEXT
-        assert results[1].items_deleted == 1
+    def test_text_saved_with_timestamp(self):
+        repo = InMemoryExtractedTextRepository()
+        repo.save("doc-1", "Skills: governance, finance", "user-1")
+        created = repo.get_creation_time("doc-1")
+        assert created is not None
+        assert (datetime.now(timezone.utc) - created).total_seconds() < 5
+
+    def test_text_retrievable_within_retention(self):
+        repo = InMemoryExtractedTextRepository()
+        repo.save("doc-1", "Some CV content", "user-1")
+        text = repo.get("doc-1")
+        assert text == "Some CV content"
+
+    def test_text_deleted_after_expiry(self):
+        repo = InMemoryExtractedTextRepository()
+        policy = RetentionPolicy(extracted_text_retention_days=7)
+        repo.save("doc-1", "Old text", "user-1")
+        repo._store["doc-1"].created_at = datetime.now(timezone.utc) - timedelta(days=14)
+        service = RetentionService(policy=policy, extracted_text_repo=repo)
+        deleted = service.cleanup_expired_texts("user-1")
+        assert deleted == 1
+        assert repo.get("doc-1") is None

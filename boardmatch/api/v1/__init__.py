@@ -14,10 +14,8 @@ from .integrations import router as integrations_router
 from .network import intro_router as network_intro_router
 from .network import router as network_router
 from .opportunities import router as opportunities_router
-from .privacy import router as privacy_router
 from .processing import router as processing_router
 from .readiness import router as readiness_router
-from .suggestions import router as suggestions_router
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 router.include_router(opportunities_router)
@@ -27,8 +25,6 @@ router.include_router(readiness_router)
 router.include_router(coaching_router)
 router.include_router(documents_router)
 router.include_router(integrations_router)
-router.include_router(privacy_router)
-router.include_router(suggestions_router)
 router.include_router(processing_router)
 router.include_router(deduplication_router)
 router.include_router(network_router)
