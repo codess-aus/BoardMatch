@@ -103,3 +103,30 @@ def get_current_user(
     """
     provider = _get_provider(settings)
     return provider.authenticate(request)
+
+
+def get_required_user(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> CurrentUser:
+    """Strict auth dependency: requires an explicit identity header or token.
+
+    Unlike get_current_user (which falls back to a default dev user),
+    this rejects requests with no authentication credentials.
+    """
+    if settings.app_env in (AppEnvironment.LOCAL, AppEnvironment.TEST):
+        user_id = request.headers.get(_DEV_USER_HEADER)
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return CurrentUser(
+            user_id=user_id,
+            email=f"{user_id}@boardmatch.local",
+            display_name=user_id,
+            roles=["user"],
+        )
+    provider = _get_provider(settings)
+    return provider.authenticate(request)

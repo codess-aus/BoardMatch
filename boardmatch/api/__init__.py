@@ -14,6 +14,7 @@ from .. import coach, discovery, network, profiles
 from ..config import get_settings
 from ..fit import rank, score_opportunity
 from ..models import ApplicationStage, Candidate, FitResult, IntroPath
+from ..profile_api import router as profile_router
 from ..readiness import ReadinessTracker
 from .v1 import router as v1_router
 
@@ -31,13 +32,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-WEB_DIR = Path(__file__).parent.parent / "web"
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 # Include versioned API routes
 app.include_router(v1_router)
+app.include_router(profile_router)
 
-# Demo-scoped in-memory state. A production deployment would persist this per
-# user (e.g. Azure Cosmos DB) rather than in a module-level tracker.
+# Demo-scoped in-memory state.
 _candidate: Candidate = profiles.load_sample_candidate()
 _tracker = ReadinessTracker(candidate=_candidate)
 
