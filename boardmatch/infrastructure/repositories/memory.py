@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from boardmatch.domain.repositories import PaginatedResult
-from boardmatch.models import Candidate, Opportunity
+from boardmatch.models import Application, ApplicationStage, Candidate, Opportunity
 
 
 class InMemoryCandidateRepository:
@@ -131,3 +132,54 @@ class InMemoryOpportunityRepository:
         start = (page - 1) * page_size
         end = start + page_size
         return PaginatedResult(items=results[start:end], total=total)
+
+
+class InMemoryApplicationRepository:
+    """User-scoped in-memory store for board applications."""
+
+    def __init__(self) -> None:
+        # {user_id: {application_id: Application}}
+        self._store: dict[str, dict[str, Application]] = {}
+
+    def get_by_id(self, user_id: str, application_id: str) -> Application | None:
+        """Return a single application owned by the user, or None."""
+        return self._store.get(user_id, {}).get(application_id)
+
+    def list_for_user(self, user_id: str) -> list[Application]:
+        """Return all applications belonging to the user."""
+        return list(self._store.get(user_id, {}).values())
+
+    def create(self, user_id: str, application: Application) -> Application:
+        """Persist a new application for the user and return it with an id."""
+        if user_id not in self._store:
+            self._store[user_id] = {}
+        app_id = str(uuid.uuid4())
+        application.id = app_id
+        self._store[user_id][app_id] = application
+        return application
+
+    def update(
+        self,
+        user_id: str,
+        application_id: str,
+        *,
+        stage: ApplicationStage | None = None,
+        notes: str | None = None,
+    ) -> Application | None:
+        """Update fields on an existing application; return updated or None."""
+        app = self.get_by_id(user_id, application_id)
+        if app is None:
+            return None
+        if stage is not None:
+            app.stage = stage
+        if notes is not None:
+            app.notes = notes
+        return app
+
+    def delete(self, user_id: str, application_id: str) -> bool:
+        """Delete an application; return True if it existed."""
+        user_apps = self._store.get(user_id, {})
+        if application_id in user_apps:
+            del user_apps[application_id]
+            return True
+        return False
