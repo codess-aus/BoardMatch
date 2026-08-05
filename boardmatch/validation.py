@@ -120,8 +120,69 @@ def validate_generated_label(engine: str) -> ValidationResult:
     return ValidationResult(valid=True, errors=[])
 
 
+
+
+# Maximum prompt length in characters
+MAX_PROMPT_LENGTH = 4000
+
+# AI content label prefix
+AI_GENERATED_LABEL = "[AI-generated content]"
+
+# Prompt injection markers to detect in output
+_INJECTION_MARKERS = [
+    "ignore previous instructions",
+    "disregard all prior",
+    "system prompt:",
+    "you are now",
+    "<|im_start|>",
+    "override safety",
+]
+
+
+def validate_prompt_length(prompt: str, max_chars: int = MAX_PROMPT_LENGTH) -> ValidationResult:
+    """Validate that a prompt does not exceed the maximum length."""
+    if len(prompt) > max_chars:
+        return ValidationResult(
+            valid=False,
+            errors=[f"Prompt exceeds maximum length ({len(prompt)}/{max_chars} chars)"],
+        )
+    return ValidationResult(valid=True, errors=[])
+
+
+def validate_candidate_facts(content: str, candidate_name: str) -> ValidationResult:
+    """Ensure candidate name appears in output (facts not invented)."""
+    if not candidate_name:
+        return ValidationResult(valid=True, errors=[])
+    if candidate_name.lower() not in content.lower():
+        return ValidationResult(
+            valid=False,
+            errors=[f"Candidate name '{candidate_name}' not found in generated output"],
+        )
+    return ValidationResult(valid=True, errors=[])
+
+
+def validate_no_prompt_injection(content: str) -> ValidationResult:
+    """Detect prompt injection patterns in generated output."""
+    lower = content.lower()
+    for marker in _INJECTION_MARKERS:
+        if marker in lower:
+            return ValidationResult(
+                valid=False,
+                errors=[f"Potential prompt injection detected in output: '{marker}'"],
+            )
+    return ValidationResult(valid=True, errors=[])
+
+
+def label_ai_output(content: str, engine: str) -> str:
+    """Prepend AI-generated label when content comes from a model."""
+    if engine != "template" and not content.startswith(AI_GENERATED_LABEL):
+        return AI_GENERATED_LABEL + "\n\n" + content
+    return content
+
+
 def validate_draft(
-    content: str, draft_type: str, engine: str, max_chars: int = 5000
+    content: str, draft_type: str, engine: str, max_chars: int = 5000,
+    candidate_name: str = "",
 ) -> ValidationResult:
     """Run all applicable validations for a draft."""
     all_errors: list[str] = []
@@ -144,5 +205,14 @@ def validate_draft(
         )
 
     all_errors.extend(type_result.errors)
+
+    # Prompt injection check
+    injection_result = validate_no_prompt_injection(content)
+    all_errors.extend(injection_result.errors)
+
+    # Candidate fact preservation
+    if candidate_name:
+        facts_result = validate_candidate_facts(content, candidate_name)
+        all_errors.extend(facts_result.errors)
 
     return ValidationResult(valid=len(all_errors) == 0, errors=all_errors)

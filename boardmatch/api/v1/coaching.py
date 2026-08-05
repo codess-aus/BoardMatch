@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.drafts import Draft, InMemoryDraftRepository, new_draft_id
-from boardmatch.validation import validate_draft
+from boardmatch.validation import label_ai_output, validate_draft
 
 from ... import coach, discovery, profiles
 from ...fit import score_opportunity
@@ -44,9 +44,9 @@ def _check_rate_limit(user_id: str) -> None:
         )
 
 
-def _validate_and_raise(content: str, draft_type: str, engine: str) -> None:
+def _validate_and_raise(content: str, draft_type: str, engine: str, candidate_name: str = "") -> None:
     """Validate draft content and raise 422 if validation fails."""
-    result = validate_draft(content, draft_type, engine)
+    result = validate_draft(content, draft_type, engine, candidate_name=candidate_name)
     if not result.valid:
         raise HTTPException(
             status_code=422,
@@ -117,7 +117,7 @@ def draft_board_cv(
         fit = score_opportunity(_candidate, opportunity)
     raw_draft = coach.board_cv(_candidate, fit)
 
-    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine, candidate_name=_candidate.name)
 
     persisted = Draft(
         id=new_draft_id(),
@@ -147,7 +147,7 @@ def draft_director_bio(
 
     raw_draft = coach.director_bio(_candidate)
 
-    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine, candidate_name=_candidate.name)
 
     persisted = Draft(
         id=new_draft_id(),
@@ -180,7 +180,7 @@ def draft_outreach(
 
     raw_draft = coach.outreach_message(_candidate, opportunity)
 
-    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine)
+    _validate_and_raise(raw_draft.content, raw_draft.kind, raw_draft.engine, candidate_name=_candidate.name)
 
     persisted = Draft(
         id=new_draft_id(),
