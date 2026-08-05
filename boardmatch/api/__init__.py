@@ -1,4 +1,4 @@
-"""FastAPI app exposing the BoardMatch agent and demo UI."""
+"""FastAPI app exposing the BoardMatch agent and authenticated UI."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from ..fit import rank, score_opportunity
 from ..models import ApplicationStage, Candidate, FitResult, IntroPath
 from ..profile_api import router as profile_router
 from ..readiness import ReadinessTracker
+from ..web import router as web_router
 from .errors import register_error_handlers
 from .health import router as health_router
 from .middleware import register_middleware
@@ -47,6 +48,7 @@ app.include_router(v1_router)
 app.include_router(account_router)
 app.include_router(profile_router)
 app.include_router(health_router)
+app.include_router(web_router)
 
 # Demo-scoped in-memory state.
 _candidate: Candidate = profiles.load_sample_candidate()
@@ -88,10 +90,6 @@ def _serialise_fit(fit: FitResult, intro: Optional[IntroPath] = None) -> dict:
         ),
     }
 
-
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
 
 
 @app.get("/api/candidate")
