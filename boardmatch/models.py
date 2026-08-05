@@ -121,3 +121,4 @@ class Application:
     opportunity_id: str
     stage: ApplicationStage = ApplicationStage.RESEARCHING
     notes: str = ""
+    id: str = ""

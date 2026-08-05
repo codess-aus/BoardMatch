@@ -37,6 +37,9 @@ class IngestionRun:
     completed_at: Optional[datetime] = None
     records_fetched: int = 0
     records_stored: int = 0
+    records_created: int = 0
+    records_updated: int = 0
+    records_deactivated: int = 0
     error_message: Optional[str] = None
 
     def start(self) -> None:

@@ -16,6 +16,9 @@ from ..fit import rank, score_opportunity
 from ..models import ApplicationStage, Candidate, FitResult, IntroPath
 from ..profile_api import router as profile_router
 from ..readiness import ReadinessTracker
+from .errors import register_error_handlers
+from .health import router as health_router
+from .middleware import register_middleware
 from .v1 import router as v1_router
 
 
@@ -32,11 +35,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register error handlers and middleware
+register_error_handlers(app)
+register_middleware(app)
+
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 # Include versioned API routes
 app.include_router(v1_router)
 app.include_router(profile_router)
+app.include_router(health_router)
 
 # Demo-scoped in-memory state.
 _candidate: Candidate = profiles.load_sample_candidate()
