@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -19,6 +19,21 @@ class IntroPathResponse(BaseModel):
     relationship: str
     reason: str
     warmth: int
+
+
+class ProvenanceResponse(BaseModel):
+    """Provenance and trust indicators for an opportunity."""
+
+    source_name: str
+    source_url: str | None = None
+    first_seen: datetime | None = None
+    last_verified: datetime | None = None
+    closing_date: date | None = None
+    status: str
+    remuneration_confidence: str
+    is_stale: bool = False
+    stale_warning: str | None = None
+    duplicate_sources: list[str] | None = None
 
 
 class OpportunityResponse(BaseModel):
@@ -43,6 +58,7 @@ class OpportunityResponse(BaseModel):
     rationale: list[str]
     gap_actions: list[str]
     intro_path: Optional[IntroPathResponse] = None
+    provenance: Optional[ProvenanceResponse] = None
 
 
 class OpportunityListResponse(BaseModel):
