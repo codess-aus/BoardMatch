@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 
 from boardmatch.api import app
 from boardmatch.api.v1.schemas import (
-    ApplicationResponse,
+    ApplicationListResponse,
     CoachingBoardCvResponse,
-    OpportunityListResponse,
+    PaginatedOpportunityResponse,
     OpportunityResponse,
     ReadinessResponse,
 )
@@ -29,23 +29,21 @@ class TestV1Opportunities:
         resp = client.get("/api/v1/opportunities", headers=AUTH_HEADER)
         assert resp.status_code == 200
         body = resp.json()
-        # Validate against Pydantic model
-        parsed = OpportunityListResponse(**body)
-        assert parsed.count > 0
-        assert len(parsed.results) == parsed.count
-        assert parsed.paid_count <= parsed.count
+        parsed = PaginatedOpportunityResponse(**body)
+        assert parsed.total > 0
+        assert len(parsed.items) <= parsed.page_size
+        assert parsed.page == 1
 
     def test_list_opportunities_with_filters(self):
         resp = client.get(
             "/api/v1/opportunities",
             headers=AUTH_HEADER,
-            params={"paid_only": True, "limit": 5},
+            params={"paid_only": True, "page_size": 5},
         )
         assert resp.status_code == 200
         body = resp.json()
-        parsed = OpportunityListResponse(**body)
-        assert parsed.count == parsed.paid_count
-        assert parsed.count <= 5
+        parsed = PaginatedOpportunityResponse(**body)
+        assert len(parsed.items) <= 5
 
     def test_get_opportunity_success(self):
         resp = client.get("/api/v1/opportunities/gov-001", headers=AUTH_HEADER)
@@ -60,7 +58,7 @@ class TestV1Opportunities:
         resp = client.get("/api/v1/opportunities/nonexistent", headers=AUTH_HEADER)
         assert resp.status_code == 404
         body = resp.json()
-        assert "detail" in body
+        assert body["code"] == "not_found"
 
     def test_opportunity_response_has_all_fields(self):
         resp = client.get("/api/v1/opportunities/gov-001", headers=AUTH_HEADER)
@@ -85,9 +83,8 @@ class TestV1Applications:
         resp = client.get("/api/v1/applications", headers=AUTH_HEADER)
         assert resp.status_code == 200
         body = resp.json()
-        parsed = ApplicationResponse(**body)
+        parsed = ApplicationListResponse(**body)
         assert isinstance(parsed.applications, list)
-        assert parsed.message
 
 
 # --- Readiness ---
@@ -161,7 +158,7 @@ class TestV1Authentication:
         resp = getattr(client, method)(path)
         assert resp.status_code == 401
         body = resp.json()
-        assert body["detail"] == "Authentication required"
+        assert body["message"] == "Authentication required"
 
     def test_auth_header_grants_access(self):
         """Providing X-Dev-User-Id header grants access."""
@@ -213,7 +210,7 @@ class TestOpenAPIDocumentation:
         resp = client.get("/openapi.json")
         schema = resp.json()
         components = schema.get("components", {}).get("schemas", {})
-        assert "OpportunityListResponse" in components
+        assert "PaginatedOpportunityResponse" in components
         assert "OpportunityResponse" in components
         assert "ApplicationResponse" in components
         assert "ReadinessResponse" in components
