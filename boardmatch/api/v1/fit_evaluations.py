@@ -15,7 +15,6 @@ from boardmatch.infrastructure.repositories.memory import (
     InMemoryOpportunityRepository,
 )
 from boardmatch.models import FitEvaluation
-from boardmatch.profile_api import _profile_versions
 
 from .schemas import (
     FitEvaluationCreateRequest,
@@ -85,6 +84,7 @@ def create_fit_evaluation(
             detail="Profile not found. Create a profile before evaluating fit.",
         )
 
+    from boardmatch.profile_api import _profile_versions
     profile_version = _profile_versions.get(user.user_id, 1)
 
     existing = eval_repo.find_existing(
