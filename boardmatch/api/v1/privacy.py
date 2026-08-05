@@ -8,15 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
 from boardmatch.retention import (
-    CleanupResult,
     InMemoryExtractedTextRepository,
-    InMemoryNetworkDataRepository,
-    RetentionCategory,
-    RetentionConfig,
-    RetentionManager,
+    InMemoryNetworkRepository,
     RetentionPolicy,
+    RetentionService,
     revoke_integration_token,
+    delete_network_data,
 )
 from boardmatch.documents import InMemoryDocumentRepository
 from boardmatch.integrations import InMemoryIntegrationRepository
@@ -25,16 +24,11 @@ from boardmatch.storage import LocalStorageBackend
 router = APIRouter(prefix="/privacy", tags=["privacy"])
 
 # Module-level instances (replaced via dependency override in tests)
-_retention_config = RetentionConfig()
 _document_repo = InMemoryDocumentRepository()
 _extracted_text_repo = InMemoryExtractedTextRepository()
-_network_repo = InMemoryNetworkDataRepository()
+_network_repo = InMemoryNetworkRepository()
 _storage_backend = LocalStorageBackend()
 _integration_repo = InMemoryIntegrationRepository()
-
-
-def get_retention_config() -> RetentionConfig:
-    return _retention_config
 
 
 def get_document_repo() -> InMemoryDocumentRepository:
@@ -45,7 +39,7 @@ def get_extracted_text_repo() -> InMemoryExtractedTextRepository:
     return _extracted_text_repo
 
 
-def get_network_repo() -> InMemoryNetworkDataRepository:
+def get_network_repo() -> InMemoryNetworkRepository:
     return _network_repo
 
 
@@ -63,7 +57,6 @@ def get_integration_repo() -> InMemoryIntegrationRepository:
 class RetentionPolicyResponse(BaseModel):
     category: str
     retention_days: int
-    description: str
 
 
 class RetentionPoliciesResponse(BaseModel):
@@ -71,13 +64,8 @@ class RetentionPoliciesResponse(BaseModel):
 
 
 class CleanupResultResponse(BaseModel):
-    category: str
-    items_deleted: int
-    cutoff_date: datetime
-
-
-class CleanupResponse(BaseModel):
-    results: list[CleanupResultResponse]
+    documents_deleted: int
+    texts_deleted: int
 
 
 class NetworkDeletionResponse(BaseModel):
@@ -108,61 +96,51 @@ class DeletionRequestResponse(BaseModel):
 @router.get("/retention-policies", response_model=RetentionPoliciesResponse)
 def list_retention_policies(
     user: CurrentUser = Depends(get_required_user),
-    config: RetentionConfig = Depends(get_retention_config),
 ) -> RetentionPoliciesResponse:
     """List all configured data retention policies."""
+    settings = get_settings()
     return RetentionPoliciesResponse(
         policies=[
-            RetentionPolicyResponse(
-                category=p.category.value,
-                retention_days=p.retention_days,
-                description=p.description,
-            )
-            for p in config.policies
+            RetentionPolicyResponse(category="documents", retention_days=settings.document_retention_days),
+            RetentionPolicyResponse(category="extracted_text", retention_days=settings.extracted_text_retention_days),
+            RetentionPolicyResponse(category="audit_logs", retention_days=settings.audit_log_retention_days),
         ]
     )
 
 
-@router.post("/cleanup", response_model=CleanupResponse)
+@router.post("/cleanup", response_model=CleanupResultResponse)
 def run_cleanup(
     user: CurrentUser = Depends(get_required_user),
-    config: RetentionConfig = Depends(get_retention_config),
     doc_repo: InMemoryDocumentRepository = Depends(get_document_repo),
     text_repo: InMemoryExtractedTextRepository = Depends(get_extracted_text_repo),
     storage: LocalStorageBackend = Depends(get_storage_backend),
-) -> CleanupResponse:
-    """Run retention cleanup (admin-only in production)."""
-    manager = RetentionManager(
-        config=config,
+) -> CleanupResultResponse:
+    """Run retention cleanup for the current user."""
+    settings = get_settings()
+    policy = RetentionPolicy(
+        document_retention_days=settings.document_retention_days,
+        extracted_text_retention_days=settings.extracted_text_retention_days,
+    )
+    service = RetentionService(
+        policy=policy,
         document_repo=doc_repo,
         extracted_text_repo=text_repo,
         storage_backend=storage,
     )
-    results = manager.run_all_cleanups()
-    return CleanupResponse(
-        results=[
-            CleanupResultResponse(
-                category=r.category.value,
-                items_deleted=r.items_deleted,
-                cutoff_date=r.cutoff_date,
-            )
-            for r in results
-        ]
+    result = service.run_cleanup(user.user_id)
+    return CleanupResultResponse(
+        documents_deleted=result.documents_deleted,
+        texts_deleted=result.texts_deleted,
     )
 
 
 @router.delete("/network-data", response_model=NetworkDeletionResponse)
-def delete_network_data(
+def delete_user_network_data(
     user: CurrentUser = Depends(get_required_user),
-    config: RetentionConfig = Depends(get_retention_config),
-    network_repo: InMemoryNetworkDataRepository = Depends(get_network_repo),
+    network_repo: InMemoryNetworkRepository = Depends(get_network_repo),
 ) -> NetworkDeletionResponse:
     """Delete all network/connection data for the current user."""
-    manager = RetentionManager(
-        config=config,
-        network_repo=network_repo,
-    )
-    deleted = manager.delete_network_data(user.user_id)
+    deleted = delete_network_data(user.user_id, network_repo)
     return NetworkDeletionResponse(
         status="deleted",
         records_deleted=deleted,
@@ -193,30 +171,28 @@ def revoke_token(
 @router.delete("/all-data", response_model=DeletionRequestResponse)
 def delete_all_user_data(
     user: CurrentUser = Depends(get_required_user),
-    config: RetentionConfig = Depends(get_retention_config),
     doc_repo: InMemoryDocumentRepository = Depends(get_document_repo),
     text_repo: InMemoryExtractedTextRepository = Depends(get_extracted_text_repo),
-    network_repo: InMemoryNetworkDataRepository = Depends(get_network_repo),
+    network_repo: InMemoryNetworkRepository = Depends(get_network_repo),
     storage: LocalStorageBackend = Depends(get_storage_backend),
     integration_repo: InMemoryIntegrationRepository = Depends(get_integration_repo),
 ) -> DeletionRequestResponse:
-    """Delete all user data (GDPR right to erasure / right to be forgotten)."""
-    # Delete documents
-    docs = doc_repo.list_by_user(user.user_id)
-    for doc in docs:
-        try:
-            storage.delete(doc.storage_path)
-        except IOError:
-            pass
-        doc_repo.delete(doc.id)
-
-    # Delete extracted text
-    texts = text_repo.list_by_user(user.user_id)
-    for t in texts:
-        text_repo.delete(t.id)
+    """Delete all user data (GDPR right to erasure)."""
+    settings = get_settings()
+    policy = RetentionPolicy(
+        document_retention_days=settings.document_retention_days,
+        extracted_text_retention_days=settings.extracted_text_retention_days,
+    )
+    service = RetentionService(
+        policy=policy,
+        document_repo=doc_repo,
+        extracted_text_repo=text_repo,
+        storage_backend=storage,
+    )
+    result = service.delete_all_user_data(user.user_id)
 
     # Delete network data
-    network_deleted = network_repo.delete_by_user(user.user_id)
+    network_deleted = delete_network_data(user.user_id, network_repo)
 
     # Revoke all tokens
     tokens_revoked = 0
@@ -228,8 +204,8 @@ def delete_all_user_data(
     return DeletionRequestResponse(
         status="deleted",
         user_id=user.user_id,
-        documents_deleted=len(docs),
-        extracted_text_deleted=len(texts),
+        documents_deleted=result.documents_deleted,
+        extracted_text_deleted=result.texts_deleted,
         network_records_deleted=network_deleted,
         tokens_revoked=tokens_revoked,
         requested_at=datetime.now(timezone.utc),
