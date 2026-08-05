@@ -128,3 +128,32 @@ class PaginatedOpportunityResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+
+class FitEvaluationCreateRequest(BaseModel):
+    """Request body for creating/re-evaluating a fit evaluation."""
+
+    opportunity_id: str
+
+
+class FitEvaluationResponse(BaseModel):
+    """Response model for a single fit evaluation."""
+
+    id: str
+    opportunity_id: str
+    profile_version: int
+    scoring_version: str
+    score: int
+    band: str
+    matched_skills: list[str]
+    missing_skills: list[str]
+    rationale: list[str]
+    gap_actions: list[str]
+    created_at: str
+
+
+class FitEvaluationListResponse(BaseModel):
+    """Response model for listing fit evaluations."""
+
+    evaluations: list[FitEvaluationResponse]

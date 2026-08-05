@@ -164,6 +164,7 @@ class ApplicationEvent:
     notes: str = ""
 
 
+
 @dataclass
 class NetworkConnection:
     """A persisted network connection with approval and strength metadata."""
@@ -178,3 +179,22 @@ class NetworkConnection:
     strength: int = 5  # 1-10, user-adjustable
     source: str = "manual"
     deleted: bool = False
+
+
+
+@dataclass(frozen=True)
+class FitEvaluation:
+    """A persisted fit evaluation with versioning for audit."""
+
+    id: str
+    user_id: str
+    opportunity_id: str
+    profile_version: int
+    scoring_version: str
+    score: int
+    band: str
+    matched_skills: tuple[str, ...]
+    missing_skills: tuple[str, ...]
+    rationale: tuple[str, ...]
+    gap_actions: tuple[str, ...]
+    created_at: datetime

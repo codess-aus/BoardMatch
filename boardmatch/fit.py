@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from .models import Candidate, FitResult, Opportunity
 
+SCORING_VERSION = "1.0"
+
 REQUIRED_WEIGHT = 60
 DESIRABLE_WEIGHT = 20
 SECTOR_WEIGHT = 10
