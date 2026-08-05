@@ -19,6 +19,7 @@ from boardmatch.models import (
     VALID_STAGE_TRANSITIONS,
 )
 
+from .authorization import require_active_user
 from .schemas import (
     ApplicationCreateRequest,
     ApplicationEventCreateRequest,
@@ -29,7 +30,7 @@ from .schemas import (
     ApplicationUpdateRequest,
 )
 
-router = APIRouter(tags=["applications"])
+router = APIRouter(tags=["applications"], dependencies=[Depends(require_active_user)])
 
 _application_repo = InMemoryApplicationRepository()
 _opportunity_repo = InMemoryOpportunityRepository()

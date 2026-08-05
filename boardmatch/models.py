@@ -162,3 +162,19 @@ class ApplicationEvent:
     new_stage: ApplicationStage
     timestamp: datetime
     notes: str = ""
+
+
+@dataclass
+class NetworkConnection:
+    """A persisted network connection with approval and strength metadata."""
+
+    id: str
+    user_id: str
+    name: str
+    relationship: str
+    organisations: list[str] = field(default_factory=list)
+    board_seats: list[str] = field(default_factory=list)
+    approved: bool = False
+    strength: int = 5  # 1-10, user-adjustable
+    source: str = "manual"
+    deleted: bool = False
