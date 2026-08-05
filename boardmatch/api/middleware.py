@@ -18,7 +18,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            # Exception handlers will produce the response; re-raise so
+            # Starlette's ServerErrorMiddleware can return its 500 response.
+            raise
         response.headers["X-Request-ID"] = request_id
         return response
 
