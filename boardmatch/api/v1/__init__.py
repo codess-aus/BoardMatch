@@ -10,6 +10,7 @@ from .documents import router as documents_router
 from .integrations import router as integrations_router
 from .opportunities import router as opportunities_router
 from .readiness import router as readiness_router
+from .deduplication import router as deduplication_router
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 router.include_router(opportunities_router)
@@ -18,3 +19,4 @@ router.include_router(readiness_router)
 router.include_router(coaching_router)
 router.include_router(documents_router)
 router.include_router(integrations_router)
+router.include_router(deduplication_router)
