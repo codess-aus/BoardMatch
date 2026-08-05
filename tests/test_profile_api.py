@@ -92,7 +92,7 @@ class TestRetrieveProfile:
     def test_get_profile_not_found(self, client: TestClient):
         resp = client.get("/api/v1/profile", headers=_headers())
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Profile not found"
+        assert resp.json()["message"] == "Profile not found"
 
     def test_get_profile_after_create(self, client: TestClient):
         client.put("/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers())
