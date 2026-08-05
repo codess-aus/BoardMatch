@@ -108,8 +108,40 @@ class ApplicationEventListResponse(BaseModel):
 class ReadinessResponse(BaseModel):
     """Placeholder response for readiness endpoint."""
 
-    readiness_score: float = 0.0
-    message: str = "Readiness endpoint - coming soon"
+
+class ReadinessComponentsResponse(BaseModel):
+    """Breakdown of readiness score components."""
+
+    credentials: int
+    skills: int
+    pipeline_momentum: int
+
+
+class ReadinessResponse(BaseModel):
+    """Full readiness assessment for the authenticated user."""
+
+    score: int
+    components: ReadinessComponentsResponse
+    scoring_version: str
+    next_actions: list[str]
+    stage_counts: dict[str, int]
+
+
+class ReadinessHistoryEntry(BaseModel):
+    """A single historical readiness snapshot."""
+
+    score: int
+    components: ReadinessComponentsResponse
+    scoring_version: str
+    next_actions: list[str]
+    stage_counts: dict[str, int]
+    timestamp: str
+
+
+class ReadinessHistoryResponse(BaseModel):
+    """List of historical readiness snapshots."""
+
+    snapshots: list[ReadinessHistoryEntry]
 
 
 class CoachingBoardCvResponse(BaseModel):
