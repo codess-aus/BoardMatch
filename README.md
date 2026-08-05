@@ -85,3 +85,25 @@ pipeline momentum 30.
 
 All opportunities, the sample candidate and the network are **synthetic demo data**. No real
 person, organisation or vacancy is represented.
+
+## Data Handling & Privacy
+
+BoardMatch handles personal data responsibly. The following controls are in place:
+
+| Control | Detail |
+|---|---|
+| **Document retention** | Uploaded documents are automatically deleted after a configurable period (default 365 days). Set `DOCUMENT_RETENTION_DAYS` to adjust. |
+| **Extracted text retention** | Text extracted from CVs/documents is purged after a shorter period (default 90 days). Set `EXTRACTED_TEXT_RETENTION_DAYS` to adjust. |
+| **Network data deletion** | Users can request deletion of all their network/connection data at any time via `DELETE /api/v1/privacy/network-data`. |
+| **Token revocation** | OAuth integration tokens can be revoked via `POST /api/v1/privacy/revoke-token/{provider}`, which clears the stored token hash immediately. |
+| **Right to erasure** | `DELETE /api/v1/privacy/all-data` removes all user data (documents, extracted text, network records, tokens). |
+| **Log redaction** | Privacy-sensitive fields (email, phone, tokens, passwords) are excluded from ordinary application logs using the `redact_sensitive_fields` and `redact_log_message` utilities. |
+| **Storage encryption** | Production deployments require Azure Storage (encrypted at rest by default). The app validates `AZURE_STORAGE_ACCOUNT` is configured when `STORAGE_ENCRYPTION_REQUIRED=true`. |
+
+### Privacy-related environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `DOCUMENT_RETENTION_DAYS` | 365 | Days to retain uploaded documents |
+| `EXTRACTED_TEXT_RETENTION_DAYS` | 90 | Days to retain extracted CV text |
+| `STORAGE_ENCRYPTION_REQUIRED` | true | Enforce storage account in production |

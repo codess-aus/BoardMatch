@@ -29,7 +29,10 @@ class Settings(BaseModel):
     azure_openai_api_key: SecretStr | None = None
     azure_openai_deployment: str | None = None
     azure_storage_account: str | None = None
+    storage_encryption_required: bool = True
     log_level: str = "INFO"
+    document_retention_days: int = 365
+    extracted_text_retention_days: int = 90
 
     @field_validator(
         "auth_issuer",
@@ -105,6 +108,10 @@ class Settings(BaseModel):
             raise ValueError("AZURE_OPENAI_ENDPOINT must use HTTPS in production")
         if self.log_level == "DEBUG":
             raise ValueError("LOG_LEVEL must not be DEBUG in production")
+        if self.storage_encryption_required and not self.azure_storage_account:
+            raise ValueError(
+                "AZURE_STORAGE_ACCOUNT is required when storage encryption is enforced in production"
+            )
         return self
 
     @classmethod
@@ -130,7 +137,10 @@ _ENVIRONMENT_FIELDS = {
     "AZURE_OPENAI_API_KEY": "azure_openai_api_key",
     "AZURE_OPENAI_DEPLOYMENT": "azure_openai_deployment",
     "AZURE_STORAGE_ACCOUNT": "azure_storage_account",
+    "STORAGE_ENCRYPTION_REQUIRED": "storage_encryption_required",
     "LOG_LEVEL": "log_level",
+    "DOCUMENT_RETENTION_DAYS": "document_retention_days",
+    "EXTRACTED_TEXT_RETENTION_DAYS": "extracted_text_retention_days",
 }
 
 
