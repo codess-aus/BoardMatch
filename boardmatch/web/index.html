@@ -27,6 +27,18 @@
   .badge.paid { background:#e3f4ec; color:var(--paid); font-weight:600; }
   .badge.expired { background:#fdecea; color:var(--error); font-weight:600; }
   .badge.unverified { background:#fff3e0; color:var(--warn); font-weight:600; }
+  .badge.withdrawn { background:#fdecea; color:var(--error); font-weight:600; }
+  .badge.stale { background:#fff3e0; color:var(--warn); font-weight:600; }
+  .badge.active { background:#e3f4ec; color:var(--paid); }
+  .badge.confidence-high { background:#e3f4ec; color:var(--paid); }
+  .badge.confidence-medium { background:#fff3e0; color:var(--warn); }
+  .badge.confidence-low { background:#fdecea; color:var(--error); }
+  .badge.confidence-unknown { background:#eef2f9; color:var(--muted); }
+  .badge.duplicate { background:#e8eaf6; color:#3949ab; }
+  .provenance { font-size:.8rem; color:var(--muted); margin:.4rem 0; border-top:1px solid var(--line); padding-top:.4rem; }
+  .provenance a { color:var(--accent); text-decoration:none; }
+  .provenance a:hover { text-decoration:underline; }
+  .stale-warning { background:#fff3e0; border-left:3px solid var(--warn); padding:.3rem .6rem; font-size:.8rem; color:var(--warn); border-radius:0 4px 4px 0; margin:.3rem 0; }
   .meta { color:var(--muted); font-size:.85rem; margin:.35rem 0 .6rem; }
   ul { margin:.4rem 0 .4rem 1.1rem; padding:0; font-size:.87rem; }
   h3 { font-size:.95rem; margin:.8rem 0 .2rem; }
@@ -228,6 +240,33 @@ function isExpired(closesOn) {
 function renderOpportunity(o) {
   const expired = isExpired(o.closes_on);
   const unverified = (o.source || "").toLowerCase().includes("unverified");
+  const prov = o.provenance || {};
+  const statusClass = prov.status || "";
+  const confClass = prov.remuneration_confidence ? `confidence-${prov.remuneration_confidence}` : "";
+
+  let provenanceHtml = "";
+  if (prov.source_name) {
+    const sourceLink = prov.source_url
+      ? `<a href="${esc(prov.source_url)}" target="_blank" rel="noopener">${esc(prov.source_name)}</a>`
+      : esc(prov.source_name);
+    const firstSeen = prov.first_seen ? new Date(prov.first_seen).toLocaleDateString() : "—";
+    const lastVerified = prov.last_verified ? new Date(prov.last_verified).toLocaleDateString() : "—";
+    const closingDate = prov.closing_date || "—";
+    provenanceHtml = `<div class="provenance">
+      Source: ${sourceLink} · First seen: ${firstSeen} · Verified: ${lastVerified} · Closes: ${esc(closingDate)}
+    </div>`;
+  }
+
+  let staleHtml = "";
+  if (prov.stale_warning) {
+    staleHtml = `<div class="stale-warning">${esc(prov.stale_warning)}</div>`;
+  }
+
+  let duplicateHtml = "";
+  if (prov.duplicate_sources && prov.duplicate_sources.length > 1) {
+    duplicateHtml = `<span class="badge duplicate">Multiple sources (${prov.duplicate_sources.length})</span>`;
+  }
+
   return `<div class="card${expired ? ' expired-opp' : ''}">
     <div class="opp-head">
       <div>
@@ -235,11 +274,15 @@ function renderOpportunity(o) {
         <div class="meta">${esc(o.location)} · ${esc(o.sector)} · ${esc(o.source)}${o.closes_on ? " · closes " + esc(o.closes_on) : ""}</div>
         <span class="badge ${o.remuneration === "paid" ? "paid" : ""}">${esc(o.fee_display)}</span>
         <span class="badge">${esc(o.band)}</span>
-        ${expired ? '<span class="badge expired">Expired</span>' : ''}
-        ${unverified ? '<span class="badge unverified">Unverified</span>' : ''}
+        ${prov.status ? `<span class="badge ${esc(statusClass)}">${esc(prov.status)}</span>` : ''}
+        ${confClass ? `<span class="badge ${esc(confClass)}">Remuneration: ${esc(prov.remuneration_confidence)}</span>` : ''}
+        ${prov.status === "withdrawn" ? '<span class="badge withdrawn">Withdrawn</span>' : ''}
+        ${duplicateHtml}
       </div>
       <div class="score">${o.score}</div>
     </div>
+    ${staleHtml}
+    ${provenanceHtml}
     <p class="meta">${esc(o.summary)}</p>
     ${o.intro_path ? `<div class="intro"><strong>Warm path (${o.intro_path.warmth}):</strong> ${esc(o.intro_path.reason)}</div>` : ""}
     <h3>Why you fit</h3>${list(o.rationale)}

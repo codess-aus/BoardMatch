@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.provenance import build_provenance
 
 from ... import discovery, network, profiles
 from ...fit import rank, score_opportunity
@@ -19,6 +20,7 @@ from .schemas import (
     OpportunityListResponse,
     OpportunityResponse,
     PaginatedOpportunityResponse,
+    ProvenanceResponse,
 )
 
 router = APIRouter(tags=["opportunities"])
@@ -37,6 +39,41 @@ def _build_intro(intro: Optional[IntroPath]) -> Optional[IntroPathResponse]:
         relationship=intro.connection.relationship,
         reason=intro.reason,
         warmth=intro.warmth,
+    )
+
+
+def _build_provenance_response(opp: Opportunity) -> ProvenanceResponse:
+    """Build provenance indicators for an opportunity."""
+    # Determine if this is from multiple sources (merged duplicate)
+    duplicate_sources: Optional[list[str]] = None
+    if ";" in opp.source:
+        duplicate_sources = [s.strip() for s in opp.source.split(";")]
+
+    # Use current time as first_seen approximation for in-memory data
+    now = datetime.now(timezone.utc)
+    first_seen = now
+    last_verified = now
+
+    provenance = build_provenance(
+        opp,
+        first_seen=first_seen,
+        last_verified=last_verified,
+        withdrawn=False,
+        duplicate_sources=duplicate_sources,
+        now=now,
+    )
+
+    return ProvenanceResponse(
+        source_name=provenance.source_name,
+        source_url=provenance.source_url,
+        first_seen=provenance.first_seen,
+        last_verified=provenance.last_verified,
+        closing_date=provenance.closing_date,
+        status=provenance.status.value,
+        remuneration_confidence=provenance.remuneration_confidence.value,
+        is_stale=provenance.is_stale,
+        stale_warning=provenance.stale_warning,
+        duplicate_sources=provenance.duplicate_sources,
     )
 
 
@@ -66,6 +103,7 @@ def _build_opportunity_response(
         rationale=list(fit.rationale),
         gap_actions=list(fit.gap_actions),
         intro_path=_build_intro(intro),
+        provenance=_build_provenance_response(opp),
     )
 
 
