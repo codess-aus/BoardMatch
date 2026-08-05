@@ -117,7 +117,7 @@ class TestCreateApplication:
             headers=_headers(),
         )
         assert resp.status_code == 409
-        assert "already exists" in resp.json()["detail"]
+        assert "already exists" in resp.json()["message"]
 
     def test_different_opportunities_allowed(self, client: TestClient):
         resp1 = client.post(
@@ -140,7 +140,7 @@ class TestCreateApplication:
             headers=_headers(),
         )
         assert resp.status_code == 404
-        assert "Opportunity not found" in resp.json()["detail"]
+        assert "Opportunity not found" in resp.json()["message"]
 
     def test_invalid_stage_rejected(self, client: TestClient):
         resp = client.post(
@@ -221,12 +221,12 @@ class TestUpdateApplication:
         app_id = create_resp.json()["id"]
         resp = client.patch(
             f"/api/v1/applications/{app_id}",
-            json={"stage": "interviewing", "notes": "Going well"},
+            json={"stage": "applied", "notes": "Going well"},
             headers=_headers(),
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["stage"] == "interviewing"
+        assert data["stage"] == "applied"
         assert data["notes"] == "Going well"
 
     def test_invalid_stage(self, client: TestClient):
