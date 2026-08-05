@@ -19,6 +19,7 @@ from ..readiness import ReadinessTracker
 from .errors import register_error_handlers
 from .health import router as health_router
 from .middleware import register_middleware
+from .v1.account import router as account_router
 from .v1 import router as v1_router
 
 
@@ -43,6 +44,7 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 # Include versioned API routes
 app.include_router(v1_router)
+app.include_router(account_router)
 app.include_router(profile_router)
 app.include_router(health_router)
 
