@@ -17,8 +17,13 @@ from .profile_schemas import (
     ProfileUpdateRequest,
     SkillsUpdateRequest,
 )
+from .api.v1.authorization import require_active_user
 
-router = APIRouter(prefix="/api/v1/profile", tags=["profile"])
+router = APIRouter(
+    prefix="/api/v1/profile",
+    tags=["profile"],
+    dependencies=[Depends(require_active_user)],
+)
 
 # Module-level in-memory store shared across requests
 _candidate_repo = InMemoryCandidateRepository()
