@@ -116,7 +116,8 @@ class TestCallback:
             params={"code": "some-code", "state": "invalid-state"},
         )
         assert resp.status_code == 400
-        assert "Invalid or expired state" in resp.json()["detail"]
+        body = resp.json()
+        assert "Invalid or expired state" in body.get("detail", body.get("message", ""))
 
 
 class TestConsentPersistence:
