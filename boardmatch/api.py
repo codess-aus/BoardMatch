@@ -14,6 +14,7 @@ from . import coach, discovery, network, profiles
 from .config import get_settings
 from .fit import rank, score_opportunity
 from .models import ApplicationStage, Candidate, FitResult, IntroPath
+from .profile_api import router as profile_router
 from .readiness import ReadinessTracker
 
 
@@ -29,6 +30,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+app.include_router(profile_router)
 
 WEB_DIR = Path(__file__).parent / "web"
 
