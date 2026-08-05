@@ -114,7 +114,7 @@ class TestUploadDocument:
             content_type="image/png",
         )
         assert resp.status_code == 415
-        assert "Unsupported file type" in resp.json()["detail"]
+        assert "Unsupported file type" in resp.json()["message"]
         mock_storage.save.assert_not_called()
 
     def test_size_limit_rejection(self, client, mock_storage):
@@ -123,7 +123,7 @@ class TestUploadDocument:
         resp = _upload_file(client, content=large_content)
 
         assert resp.status_code == 413
-        assert "exceeds maximum" in resp.json()["detail"]
+        assert "exceeds maximum" in resp.json()["message"]
         mock_storage.save.assert_not_called()
 
     def test_duplicate_file_detection(self, client, mock_storage):
@@ -147,7 +147,7 @@ class TestUploadDocument:
         resp = _upload_file(client)
 
         assert resp.status_code == 500
-        assert "Storage failure" in resp.json()["detail"]
+        assert "Storage failure" in resp.json()["message"]
 
 
 class TestListDocuments:
