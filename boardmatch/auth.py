@@ -78,6 +78,13 @@ class _ProductionStubProvider:
 
 def _get_provider(settings: Settings) -> AuthProvider:
     """Select the appropriate auth provider based on environment."""
+    if settings.auth_issuer and settings.auth_audience:
+        from .auth_entra import EntraAuthProvider
+
+        return EntraAuthProvider(
+            issuer=settings.auth_issuer,
+            audience=settings.auth_audience,
+        )
     if settings.app_env == AppEnvironment.PRODUCTION:
         return _ProductionStubProvider()
     return DevAuthProvider()
