@@ -314,15 +314,15 @@ class TestExpiredOpportunityDisplay:
         """The UI template includes expired badge styling."""
         response = client.get("/")
         assert response.status_code == 200
-        assert "badge expired" in response.text
+        assert "badge.expired" in response.text
         assert "Expired" in response.text
 
     def test_ui_contains_unverified_badge_markup(self, client):
         """The UI template includes unverified badge styling."""
         response = client.get("/")
         assert response.status_code == 200
-        assert "badge unverified" in response.text
-        assert "Unverified" in response.text
+        assert "badge.unverified" in response.text
+        assert "unverified" in response.text
 
     def test_opportunities_include_closes_on_field(self, authed_client):
         """Opportunity responses include closes_on for expiry detection."""

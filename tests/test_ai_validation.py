@@ -352,7 +352,7 @@ class TestAPIValidationIntegration:
             )
             resp = client.post("/api/v1/coaching/board-cv", headers=AUTH_HEADER)
             assert resp.status_code == 422
-            assert "validation failed" in resp.json()["detail"].lower()
+            assert "validation failed" in resp.json().get("message", resp.json().get("detail", "")).lower()
             assert len(_draft_repo.list_for_user("test-user-validation")) == 0
 
     def test_overlong_ai_response_rejected(self):
@@ -401,7 +401,7 @@ class TestRateLimitIntegration:
         assert resp2.status_code == 200
         resp3 = client.post("/api/v1/coaching/director-bio", headers=AUTH_HEADER)
         assert resp3.status_code == 429
-        assert "rate limit" in resp3.json()["detail"].lower()
+        assert "rate limit" in resp3.json().get("message", resp3.json().get("detail", "")).lower()
 
         draft_rate_limiter.max_requests = old_max
 
@@ -464,5 +464,5 @@ class TestPromptInjectionIntegration:
             )
             resp = client.post("/api/v1/coaching/director-bio", headers=AUTH_HEADER)
             assert resp.status_code == 422
-            assert "prompt injection" in resp.json()["detail"].lower()
+            assert "prompt injection" in resp.json().get("message", resp.json().get("detail", "")).lower()
             assert len(_draft_repo.list_for_user("test-user-validation")) == 0
