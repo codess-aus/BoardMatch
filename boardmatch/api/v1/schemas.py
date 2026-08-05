@@ -81,6 +81,30 @@ class ApplicationUpdateRequest(BaseModel):
     notes: str | None = None
 
 
+class ApplicationEventCreateRequest(BaseModel):
+    """Request body for creating a stage transition event."""
+
+    new_stage: str
+    notes: str = ""
+
+
+class ApplicationEventResponse(BaseModel):
+    """Response model for a single application event."""
+
+    id: str
+    application_id: str
+    previous_stage: str
+    new_stage: str
+    timestamp: str
+    notes: str
+
+
+class ApplicationEventListResponse(BaseModel):
+    """Response model for listing application events."""
+
+    events: list[ApplicationEventResponse]
+
+
 class ReadinessResponse(BaseModel):
     """Placeholder response for readiness endpoint."""
 

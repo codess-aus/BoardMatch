@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -122,3 +123,42 @@ class Application:
     stage: ApplicationStage = ApplicationStage.RESEARCHING
     notes: str = ""
     id: str = ""
+
+
+VALID_STAGE_TRANSITIONS: dict[ApplicationStage, set[ApplicationStage]] = {
+    ApplicationStage.RESEARCHING: {
+        ApplicationStage.OUTREACH_SENT,
+        ApplicationStage.APPLIED,
+        ApplicationStage.CLOSED,
+    },
+    ApplicationStage.OUTREACH_SENT: {
+        ApplicationStage.APPLIED,
+        ApplicationStage.INTERVIEWING,
+        ApplicationStage.CLOSED,
+    },
+    ApplicationStage.APPLIED: {
+        ApplicationStage.INTERVIEWING,
+        ApplicationStage.OFFERED,
+        ApplicationStage.CLOSED,
+    },
+    ApplicationStage.INTERVIEWING: {
+        ApplicationStage.OFFERED,
+        ApplicationStage.CLOSED,
+    },
+    ApplicationStage.OFFERED: {
+        ApplicationStage.CLOSED,
+    },
+    ApplicationStage.CLOSED: set(),
+}
+
+
+@dataclass(frozen=True)
+class ApplicationEvent:
+    """An immutable record of a stage transition for an application."""
+
+    id: str
+    application_id: str
+    previous_stage: ApplicationStage
+    new_stage: ApplicationStage
+    timestamp: datetime
+    notes: str = ""

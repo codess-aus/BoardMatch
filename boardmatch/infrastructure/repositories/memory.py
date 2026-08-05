@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from boardmatch.domain.repositories import PaginatedResult
-from boardmatch.models import Application, ApplicationStage, Candidate, Opportunity
+from boardmatch.models import (
+    Application,
+    ApplicationEvent,
+    ApplicationStage,
+    Candidate,
+    Opportunity,
+    VALID_STAGE_TRANSITIONS,
+)
 
 
 class InMemoryCandidateRepository:
@@ -139,6 +146,7 @@ class InMemoryApplicationRepository:
 
     def __init__(self) -> None:
         self._store: dict[str, dict[str, Application]] = {}
+        self._events: dict[str, list[ApplicationEvent]] = {}
 
     def list_for_user(self, user_id: str) -> list[Application]:
         """Return all applications for a user."""
@@ -180,3 +188,18 @@ class InMemoryApplicationRepository:
             del user_apps[application_id]
             return True
         return False
+
+    # --- Event methods ---
+
+    def add_event(self, user_id: str, event: ApplicationEvent) -> ApplicationEvent:
+        """Store an immutable event for an application."""
+        key = f"{user_id}:{event.application_id}"
+        self._events.setdefault(key, []).append(event)
+        return event
+
+    def list_events(
+        self, user_id: str, application_id: str
+    ) -> list[ApplicationEvent]:
+        """Return events for an application in chronological order."""
+        key = f"{user_id}:{application_id}"
+        return list(self._events.get(key, []))
