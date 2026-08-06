@@ -17,12 +17,11 @@ this list as a rubber stamp — verify each item, don't just skim it.
 - [ ] Read `docs/deployment.md` in full — it documents exactly what
       `.github/workflows/deploy.yml` needs and what has/hasn't been
       validated (static/structural only, no live Azure run yet).
-- [ ] Confirm the status of [issue #106](https://github.com/codess-aus/BoardMatch/issues/106)
-      (per-router in-memory repo instance inconsistency). It's a
-      local/test-mode-only issue that does not affect Postgres-backed
-      production behavior, so it is **not** a go-live blocker — but check
-      whether it has since merged and update this line accordingly:
-      `Status as of this checklist: OPEN, not yet merged.`
+- [x] [Issue #106](https://github.com/codess-aus/BoardMatch/issues/106) (per-router in-memory
+      repo instance inconsistency, local/test-mode only — never affected Postgres-backed
+      production behavior) is **resolved**, fixed in
+      [PR #107](https://github.com/codess-aus/BoardMatch/pull/107) and merged to `main`. No action
+      needed.
 
 ## 1. Azure resource provisioning
 
@@ -195,9 +194,8 @@ rehearsed locally against SQLite.
 
 ---
 
-*Last validated against `main` at commit `41ca233` (2026-08-06): full test
-suite (902 passed, 2 skipped, 1 known pre-existing failure in
+*Last validated against `main` at commit `445ca24` (2026-08-06, after
+PR #107 merged): full test suite passing (1 known pre-existing failure in
 `tests/test_account.py`), `ruff check .` clean, `ruff format --check .`
 clean, `pip-audit -r requirements.txt` clean (no known vulnerabilities in
-the resolved dependency set). Issue #106 was open and not yet merged at
-that time.*
+the resolved dependency set). Issue #106 is resolved (PR #107).*

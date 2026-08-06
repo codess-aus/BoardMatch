@@ -72,9 +72,9 @@ before flipping real traffic to a production deployment.
   Environments (`staging`, `production`) for approval control. See `docs/deployment.md` for the
   full secrets/variables reference and what has/hasn't been validated against a real Azure
   subscription (static/structural validation only — no live run yet; see the checklist).
-- **Testing**: `python -m pytest` — 902 passing, 2 skipped, and exactly one known pre-existing
-  failure (`tests/test_account.py::TestAuditEvents::test_returns_logged_events`, an audit-event
-  ordering assertion unrelated to this effort's changes, tracked separately). Load-testing tooling
+- **Testing**: `python -m pytest` — passing except exactly one known pre-existing failure
+  (`tests/test_account.py::TestAuditEvents::test_returns_logged_events`, an audit-event ordering
+  assertion unrelated to this effort's changes, tracked separately). Load-testing tooling
   (`loadtest/`) and a disaster-recovery runbook (`docs/disaster-recovery.md`) exist, with the DR
   runbook's *procedure* (backup → simulate disaster → restore → verify) rehearsed locally against
   SQLite — the Azure-specific commands (Postgres PITR, Blob Storage recovery) are documented but
@@ -83,16 +83,16 @@ before flipping real traffic to a production deployment.
   requires configured issuer/audience settings and rejects the development bypass.
 - Demo source data remains available in `boardmatch/data/`; production startup is designed not to
   automatically import synthetic fixtures.
+- **Resolved**: [Issue #106](https://github.com/codess-aus/BoardMatch/issues/106) (per-router
+  in-memory repository instances causing inconsistent state in local/test mode — SQLite
+  `DATABASE_URL`, each router constructing its own separate `InMemoryXRepository()` rather than
+  sharing one via the factory) was fixed and merged in
+  [PR #107](https://github.com/codess-aus/BoardMatch/pull/107). It never affected Postgres-backed
+  production behavior (all routers already shared the same DB there); this closes it out for local
+  dev/test consistency too.
 
 ### Known follow-up work / not yet done
 
-- **[Issue #106](https://github.com/codess-aus/BoardMatch/issues/106) (open)**: in local/test mode
-  only (SQLite `DATABASE_URL`, in-memory repositories), each router constructs its own separate
-  `InMemoryXRepository()` instance rather than sharing one via the factory, which can cause
-  requests touching the same logical data (e.g. fit evaluations) to 404 unless seeded within the
-  same repo instance. **This does not affect Postgres-backed production behavior** (all routers
-  share the same DB) — it's a local dev/test consistency quirk only, not a production blocker, but
-  it should be fixed before relying heavily on local in-memory-mode integration testing.
 - **No live Azure run yet**: every Azure-facing piece of this effort (the deploy pipeline, Key
   Vault secret sourcing, Blob Storage/Document Intelligence/Graph integrations, disaster-recovery
   Azure commands) has been validated by code review, unit/contract tests, and — for the database
