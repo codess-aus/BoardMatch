@@ -42,6 +42,10 @@ class Settings(BaseModel):
     audit_log_retention_days: int = 90
     network_data_retention_days: int = 365
     log_level: str = "INFO"
+    key_vault_url: str | None = None
+    cors_allowed_origins: tuple[str, ...] = ()
+    rate_limit_max_requests: int = 30
+    rate_limit_window_seconds: int = 60
 
     @field_validator(
         "auth_issuer",
@@ -55,6 +59,7 @@ class Settings(BaseModel):
         "ms_graph_client_id",
         "ms_graph_client_secret",
         "ms_graph_redirect_uri",
+        "key_vault_url",
         mode="before",
     )
     @classmethod
@@ -69,12 +74,24 @@ class Settings(BaseModel):
         return value
 
     @field_validator(
-        "auth_issuer", "azure_openai_endpoint", "azure_doc_intelligence_endpoint"
+        "auth_issuer",
+        "azure_openai_endpoint",
+        "azure_doc_intelligence_endpoint",
+        "key_vault_url",
     )
     @classmethod
     def validate_optional_url(cls, value: str | None) -> str | None:
         if value is not None and urlparse(value).scheme not in {"http", "https"}:
             raise ValueError("must be an HTTP(S) URL")
+        return value
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_cors_allowed_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(
+                origin.strip() for origin in value.split(",") if origin.strip()
+            )
         return value
 
     @field_validator("azure_storage_account")
@@ -131,9 +148,7 @@ class Settings(BaseModel):
         return self
 
     @classmethod
-    def from_environment(
-        cls, environ: Mapping[str, str] | None = None
-    ) -> Settings:
+    def from_environment(cls, environ: Mapping[str, str] | None = None) -> Settings:
         """Load settings without requiring process-wide environment mutation in tests."""
         source = os.environ if environ is None else environ
         values = {
@@ -142,6 +157,40 @@ class Settings(BaseModel):
             if name in source
         }
         return cls(**values)
+
+    @classmethod
+    def from_key_vault_and_environment(
+        cls,
+        environ: Mapping[str, str] | None = None,
+        *,
+        key_vault_client: object | None = None,
+    ) -> Settings:
+        """Load settings, preferring Azure Key Vault for secret fields.
+
+        If ``KEY_VAULT_URL`` is configured (via the environment or
+        ``environ``), secret-bearing fields (``AZURE_OPENAI_API_KEY`` and any
+        other names in :data:`KEY_VAULT_SECRET_ENV_NAMES`) are fetched from
+        Key Vault using ``DefaultAzureCredential``. Any secret not found in
+        the vault falls back to the plain environment variable, so local and
+        test environments without Key Vault access are unaffected.
+
+        Raises:
+            KeyVaultUnavailableError: If ``KEY_VAULT_URL`` is set but the
+                Azure SDKs are unavailable or the vault cannot be reached.
+        """
+        source = os.environ if environ is None else environ
+        vault_url = source.get("KEY_VAULT_URL") or source.get("AZURE_KEY_VAULT_NAME")
+        if not vault_url:
+            return cls.from_environment(environ)
+
+        from .keyvault import fetch_secrets
+
+        vault_secrets = fetch_secrets(
+            vault_url, KEY_VAULT_SECRET_ENV_NAMES, client=key_vault_client
+        )
+        merged = dict(source)
+        merged.update(vault_secrets)
+        return cls.from_environment(merged)
 
 
 _ENVIRONMENT_FIELDS = {
@@ -165,7 +214,16 @@ _ENVIRONMENT_FIELDS = {
     "DOCUMENT_RETENTION_DAYS": "document_retention_days",
     "EXTRACTED_TEXT_RETENTION_DAYS": "extracted_text_retention_days",
     "AUDIT_LOG_RETENTION_DAYS": "audit_log_retention_days",
+    "KEY_VAULT_URL": "key_vault_url",
+    "CORS_ALLOWED_ORIGINS": "cors_allowed_origins",
+    "RATE_LIMIT_MAX_REQUESTS": "rate_limit_max_requests",
+    "RATE_LIMIT_WINDOW_SECONDS": "rate_limit_window_seconds",
 }
+
+# Environment-variable style names of secrets that may be sourced from Azure
+# Key Vault instead of plain environment variables. Extend this tuple as
+# future secrets (database credentials, storage keys) are added.
+KEY_VAULT_SECRET_ENV_NAMES: tuple[str, ...] = ("AZURE_OPENAI_API_KEY",)
 
 
 def get_settings() -> Settings:
