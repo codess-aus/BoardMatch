@@ -82,12 +82,15 @@ def fetch_secrets(
 
     resolved: dict[str, str] = {}
     for env_name in secret_env_names:
-        secret_name = env_name_to_secret_name(env_name)
+        secret_identifier = env_name_to_secret_name(env_name)
         try:
-            secret = client.get_secret(secret_name)
+            secret = client.get_secret(secret_identifier)
         except Exception:  # noqa: BLE001 - secret may not exist or vault may reject access
+            # Note: secret_identifier is the Key Vault secret's *name* (e.g.
+            # "AZURE-OPENAI-API-KEY"), never its value, so this is safe to log.
             logger.debug(
-                "Key Vault secret %s not available; falling back to env", secret_name
+                "Key Vault secret identifier %s not available; falling back to env",
+                secret_identifier,
             )
             continue
         value = getattr(secret, "value", None)
