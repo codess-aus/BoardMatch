@@ -19,6 +19,8 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
+from .resilience import with_resilience
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,13 +250,16 @@ class AzureDocumentIntelligenceProvider:
     Document Intelligence performs OCR on scanned/PDF resumes and downstream
     logic maps the recognized text onto known profile fields.
 
-    A simple circuit breaker protects against repeated transient failures:
-    once ``failure_threshold`` consecutive calls fail, the circuit "opens"
-    and calls are routed straight to the fallback extractor for
-    ``reset_after_seconds`` before a retry is attempted again (half-open).
-    If the provider is not configured (no endpoint, or no credential), calls
-    always go straight to the fallback rather than raising — so document
-    processing never crashes because of Document Intelligence outages.
+    The real SDK call (``_analyze``) has retry-with-backoff for transient
+    network/timeout errors (see ``boardmatch.resilience.with_resilience``).
+    On top of that, a circuit breaker protects against *sustained* failures:
+    once ``failure_threshold`` consecutive calls fail (after retries are
+    exhausted), the circuit "opens" and calls are routed straight to the
+    fallback extractor for ``reset_after_seconds`` before a retry is
+    attempted again (half-open). If the provider is not configured (no
+    endpoint, or no credential), calls always go straight to the fallback
+    rather than raising — so document processing never crashes because of
+    Document Intelligence outages.
     """
 
     def __init__(
@@ -317,6 +322,16 @@ class AzureDocumentIntelligenceProvider:
             self._record_failure(exc)
             return self._fallback_provider.extract(document_content)
 
+    @with_resilience(
+        None,
+        max_attempts=3,
+        min_wait_seconds=0.5,
+        max_wait_seconds=8.0,
+        # Only retry transient network-level failures here; the surrounding
+        # circuit breaker (in extract()/_record_failure()) handles
+        # sustained/non-transient failures by falling back immediately.
+        retry_exceptions=(TimeoutError, ConnectionError, OSError),
+    )
     def _analyze(self, document_content: str) -> str:
         """Call the Document Intelligence prebuilt-read model and return recognized text."""
         from azure.ai.documentintelligence import DocumentIntelligenceClient

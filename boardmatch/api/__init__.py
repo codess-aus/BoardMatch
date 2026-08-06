@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,11 +14,13 @@ from .. import coach, discovery, network, profiles
 from ..config import get_settings
 from ..fit import rank, score_opportunity
 from ..models import ApplicationStage, Candidate, FitResult, IntroPath
+from ..monitoring import run_alert_evaluation_loop
 from ..profile_api import router as profile_router
 from ..readiness import ReadinessTracker
 from ..web import router as web_router
 from .errors import register_error_handlers
 from .health import router as health_router
+from .metrics import router as metrics_router
 from .middleware import register_middleware
 from .v1 import router as v1_router
 from .v1.account import router as account_router
@@ -24,8 +28,22 @@ from .v1.account import router as account_router
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_settings()
-    yield
+    settings = get_settings()
+    stop_event = asyncio.Event()
+    task = asyncio.create_task(
+        run_alert_evaluation_loop(
+            interval_seconds=settings.alert_evaluation_interval_seconds,
+            webhook_url=settings.alert_webhook_url,
+            stop_event=stop_event,
+        )
+    )
+    try:
+        yield
+    finally:
+        stop_event.set()
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 
 app = FastAPI(
@@ -46,6 +64,7 @@ app.include_router(v1_router)
 app.include_router(account_router)
 app.include_router(profile_router)
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(web_router)
 
 # Demo-scoped in-memory state.
