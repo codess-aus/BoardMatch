@@ -18,6 +18,7 @@ from boardmatch.monitoring import (
     AlertSeverity,
     AlertStatus,
     MetricsCollector,
+    _redact_webhook_url,
     notify_firing_alerts,
     render_prometheus_text,
 )
@@ -149,6 +150,22 @@ class TestNotifyFiringAlerts:
         assert len(result) == 1
 
     @patch("boardmatch.monitoring.requests.post")
+    def test_webhook_failure_does_not_log_full_url(self, mock_post, caplog):
+        """A webhook URL commonly embeds a secret token (Slack/Teams incoming
+        webhooks); the failure log must never include the full URL."""
+        mock_post.side_effect = requests.exceptions.ConnectionError("down")
+        evaluations = [self._make_evaluation(AlertStatus.FIRING)]
+        secret_path = "/services/T00000000/B00000000/xoxb-super-secret-token"
+        webhook_url = f"https://hooks.slack.com{secret_path}"
+
+        with caplog.at_level("ERROR"):
+            notify_firing_alerts(evaluations, webhook_url=webhook_url)
+
+        logged_text = "\n".join(record.message for record in caplog.records)
+        assert secret_path not in logged_text
+        assert "xoxb-super-secret-token" not in logged_text
+
+    @patch("boardmatch.monitoring.requests.post")
     def test_webhook_retries_transient_failure(self, mock_post):
         response = MagicMock()
         response.raise_for_status = MagicMock()
@@ -157,6 +174,15 @@ class TestNotifyFiringAlerts:
         evaluations = [self._make_evaluation(AlertStatus.FIRING)]
         notify_firing_alerts(evaluations, webhook_url="https://example.com/webhook")
         assert mock_post.call_count == 2
+
+
+class TestRedactWebhookUrl:
+    def test_redacts_path_and_query(self):
+        redacted = _redact_webhook_url(
+            "https://hooks.slack.com/services/T000/B000/secret-token?x=1"
+        )
+        assert redacted == "https://hooks.slack.com/[redacted]"
+        assert "secret-token" not in redacted
 
 
 class TestAlertEvaluationLoop:

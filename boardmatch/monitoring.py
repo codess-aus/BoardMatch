@@ -15,6 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -507,6 +508,17 @@ def _post_alert_webhook(webhook_url: str, payload: dict[str, Any]) -> None:
     response.raise_for_status()
 
 
+def _redact_webhook_url(url: str) -> str:
+    """Redact a webhook URL for safe logging.
+
+    Incoming webhook URLs (Slack, Teams, custom relays) commonly embed a
+    secret token directly in the path or query string. Only the scheme and
+    host are safe to log; never surface the full URL in logs or exceptions.
+    """
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}/[redacted]"
+
+
 def notify_firing_alerts(
     evaluations: list[AlertEvaluation], webhook_url: str | None = None
 ) -> list[AlertEvaluation]:
@@ -557,8 +569,11 @@ def notify_firing_alerts(
     try:
         _post_alert_webhook(webhook_url, payload)
     except Exception:
+        # Never log the raw webhook_url — it commonly embeds a secret token
+        # (e.g. Slack/Teams incoming webhooks). Log only scheme+host.
         logger.exception(
-            "Failed to deliver alert webhook notification to %s", webhook_url
+            "Failed to deliver alert webhook notification to %s",
+            _redact_webhook_url(webhook_url),
         )
 
     return firing
