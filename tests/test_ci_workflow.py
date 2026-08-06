@@ -146,29 +146,75 @@ class TestDeployWorkflow:
 
     def test_has_required_jobs(self) -> None:
         jobs = self.workflow["jobs"]
-        for job_name in ("test", "migrate", "deploy-staging", "deploy-production"):
+        for job_name in (
+            "test",
+            "build-and-push",
+            "migrate-staging",
+            "deploy-staging",
+            "migrate-production",
+            "deploy-production",
+        ):
             assert job_name in jobs, f"Missing job: {job_name}"
 
     def test_job_dependency_chain(self) -> None:
         jobs = self.workflow["jobs"]
-        assert "test" in jobs["migrate"]["needs"]
-        assert "migrate" in jobs["deploy-staging"]["needs"]
-        assert "deploy-staging" in jobs["deploy-production"]["needs"]
+        assert "test" in jobs["build-and-push"]["needs"]
+        assert "build-and-push" in jobs["migrate-staging"]["needs"]
+        assert "migrate-staging" in jobs["deploy-staging"]["needs"]
+        assert "deploy-staging" in jobs["migrate-production"]["needs"]
+        assert "migrate-production" in jobs["deploy-production"]["needs"]
 
     def test_production_requires_environment_approval(self) -> None:
         prod_job = self.workflow["jobs"]["deploy-production"]
         assert prod_job["environment"] == "production"
+        migrate_prod_job = self.workflow["jobs"]["migrate-production"]
+        assert migrate_prod_job["environment"] == "production"
 
     def test_staging_uses_environment(self) -> None:
         staging_job = self.workflow["jobs"]["deploy-staging"]
         assert staging_job["environment"] == "staging"
+        migrate_staging_job = self.workflow["jobs"]["migrate-staging"]
+        assert migrate_staging_job["environment"] == "staging"
 
     def test_release_sha_in_env(self) -> None:
         assert "RELEASE_SHA" in self.workflow.get("env", {})
 
     def test_migration_runs_module(self) -> None:
-        migrate_job = self.workflow["jobs"]["migrate"]
-        all_run_steps = " ".join(
-            s.get("run", "") for s in migrate_job["steps"] if "run" in s
-        )
-        assert "boardmatch.infrastructure.db.migrations" in all_run_steps
+        for job_name in ("migrate-staging", "migrate-production"):
+            migrate_job = self.workflow["jobs"][job_name]
+            all_run_steps = " ".join(
+                s.get("run", "") for s in migrate_job["steps"] if "run" in s
+            )
+            assert "boardmatch.infrastructure.db.migrations" in all_run_steps
+
+    def test_migration_database_url_from_secrets(self) -> None:
+        """DATABASE_URL must come from environment secrets, never hardcoded."""
+        for job_name in ("migrate-staging", "migrate-production"):
+            migrate_job = self.workflow["jobs"][job_name]
+            database_url = migrate_job.get("env", {}).get("DATABASE_URL", "")
+            assert "secrets.DATABASE_URL" in database_url
+
+    def test_build_and_push_uses_azure_login_and_acr(self) -> None:
+        build_job = self.workflow["jobs"]["build-and-push"]
+        steps = build_job["steps"]
+        uses_list = [s.get("uses", "") for s in steps]
+        assert any("azure/login" in u for u in uses_list)
+        all_run_steps = " ".join(s.get("run", "") for s in steps if "run" in s)
+        assert "az acr login" in all_run_steps
+        assert "docker build" in all_run_steps
+        assert "docker push" in all_run_steps
+
+    def test_deploy_jobs_run_smoke_test_and_rollback(self) -> None:
+        for job_name in ("deploy-staging", "deploy-production"):
+            deploy_job = self.workflow["jobs"][job_name]
+            steps = deploy_job["steps"]
+            all_run_steps = " ".join(s.get("run", "") for s in steps if "run" in s)
+            assert "health/ready" in all_run_steps
+            step_ids = [s.get("id") for s in steps]
+            assert "smoke_test" in step_ids
+            rollback_step = next(
+                (s for s in steps if "Roll back" in s.get("name", "")), None
+            )
+            assert rollback_step is not None
+            assert "smoke_test" in rollback_step.get("if", "")
+            assert "az containerapp update" in rollback_step.get("run", "")
