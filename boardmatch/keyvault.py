@@ -81,19 +81,27 @@ def fetch_secrets(
             ) from exc
 
     resolved: dict[str, str] = {}
+    unavailable_count = 0
     for env_name in secret_env_names:
-        vault_entry_name = env_name_to_secret_name(env_name)
         try:
-            entry = client.get_secret(vault_entry_name)
+            entry = client.get_secret(env_name_to_secret_name(env_name))
         except Exception:  # noqa: BLE001 - entry may not exist or vault may reject access
-            # Note: vault_entry_name is only the Key Vault entry's *name* (e.g.
-            # "AZURE-OPENAI-API-KEY"), never its value, so this is safe to log.
-            logger.debug(
-                "Key Vault entry %s not available; falling back to env",
-                vault_entry_name,
-            )
+            # Deliberately do not log which entry was requested or any value
+            # derived from it: CodeQL's clear-text-logging analysis treats any
+            # argument passed to ``get_secret`` as a tainted "secret" source,
+            # regardless of whether it's actually a value or just a lookup
+            # key/name. Logging only an aggregate count keeps this path fully
+            # untainted while still being useful for debugging.
+            unavailable_count += 1
             continue
         value = getattr(entry, "value", None)
         if value:
             resolved[env_name] = value
+    if unavailable_count:
+        logger.debug(
+            "%d of %d configured Key Vault entries were unavailable; "
+            "falling back to environment variables for those",
+            unavailable_count,
+            unavailable_count + len(resolved),
+        )
     return resolved
