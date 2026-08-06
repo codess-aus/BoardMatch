@@ -7,10 +7,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from boardmatch.audit import AuditAction, AuditLogger
+from boardmatch.audit import AuditAction
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.config import get_settings
-from boardmatch.drafts import InMemoryDraftRepository
+from boardmatch.infrastructure.repositories.extended_factory import (
+    create_extended_repositories,
+)
 from boardmatch.infrastructure.repositories.factory import create_repositories
 from boardmatch.infrastructure.repositories.memory import (
     InMemoryApplicationRepository,
@@ -21,21 +23,22 @@ from boardmatch.integrations import (
 )
 from boardmatch.integrations import (
     AuditEventType,
-    InMemoryIntegrationRepository,
+    IntegrationRepository,
     IntegrationStatus,
 )
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
 
-_audit_logger = AuditLogger()
 _repos = create_repositories(get_settings())
+_extended_repos = create_extended_repositories(get_settings())
 _candidate_repo = _repos.candidate_repo
 _application_repo = _repos.application_repo
-_draft_repo = InMemoryDraftRepository()
-_integration_repo = InMemoryIntegrationRepository()
+_audit_logger = _extended_repos.audit_logger
+_draft_repo = _extended_repos.draft_repo
+_integration_repo = _extended_repos.integration_repo
 
 
-def get_audit_logger() -> AuditLogger:
+def get_audit_logger():
     return _audit_logger
 
 
@@ -47,11 +50,11 @@ def get_application_repo() -> InMemoryApplicationRepository:
     return _application_repo
 
 
-def get_draft_repo() -> InMemoryDraftRepository:
+def get_draft_repo():
     return _draft_repo
 
 
-def get_integration_repo() -> InMemoryIntegrationRepository:
+def get_integration_repo() -> IntegrationRepository:
     return _integration_repo
 
 
@@ -86,7 +89,7 @@ class AccountDeletedResponse(BaseModel):
 @router.get("/audit-events", response_model=AuditEventListResponse)
 def list_audit_events(
     user: CurrentUser = Depends(get_required_user),
-    audit: AuditLogger = Depends(get_audit_logger),
+    audit=Depends(get_audit_logger),
 ) -> AuditEventListResponse:
     """List audit events for the authenticated user."""
     events = audit.get_events(user.user_id)
@@ -109,11 +112,11 @@ def list_audit_events(
 @router.post("/export", response_model=ExportResponse)
 def request_export(
     user: CurrentUser = Depends(get_required_user),
-    audit: AuditLogger = Depends(get_audit_logger),
+    audit=Depends(get_audit_logger),
     candidate_repo: InMemoryCandidateRepository = Depends(get_candidate_repo),
     app_repo: InMemoryApplicationRepository = Depends(get_application_repo),
-    draft_repo: InMemoryDraftRepository = Depends(get_draft_repo),
-    integration_repo: InMemoryIntegrationRepository = Depends(get_integration_repo),
+    draft_repo=Depends(get_draft_repo),
+    integration_repo: IntegrationRepository = Depends(get_integration_repo),
 ) -> ExportResponse:
     """Export all user data (profile, applications, drafts, consents)."""
     candidate = candidate_repo.get_for_user(user.user_id)
@@ -186,11 +189,11 @@ def request_export(
 @router.delete("", response_model=AccountDeletedResponse)
 def delete_account(
     user: CurrentUser = Depends(get_required_user),
-    audit: AuditLogger = Depends(get_audit_logger),
+    audit=Depends(get_audit_logger),
     candidate_repo: InMemoryCandidateRepository = Depends(get_candidate_repo),
     app_repo: InMemoryApplicationRepository = Depends(get_application_repo),
-    draft_repo: InMemoryDraftRepository = Depends(get_draft_repo),
-    integration_repo: InMemoryIntegrationRepository = Depends(get_integration_repo),
+    draft_repo=Depends(get_draft_repo),
+    integration_repo: IntegrationRepository = Depends(get_integration_repo),
 ) -> AccountDeletedResponse:
     """Delete account: revoke integrations and anonymise personal data."""
     integrations = integration_repo.list_by_user(user.user_id)

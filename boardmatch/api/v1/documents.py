@@ -11,20 +11,24 @@ from ...documents import (
     MAX_FILE_SIZE_BYTES,
     SUPPORTED_CONTENT_TYPES,
     Document,
+    DocumentRepository,
     DocumentStatus,
-    InMemoryDocumentRepository,
     compute_content_hash,
+)
+from ...infrastructure.repositories.extended_factory import (
+    create_extended_repositories,
 )
 from ...storage import StorageBackend, create_storage_backend
 
 router = APIRouter(prefix="/profile/documents", tags=["documents"])
 
 # Module-level instances (swapped in tests)
-_document_repo = InMemoryDocumentRepository()
+_repos = create_extended_repositories(get_settings())
+_document_repo = _repos.document_repo
 _storage_backend: StorageBackend | None = None
 
 
-def get_document_repo() -> InMemoryDocumentRepository:
+def get_document_repo() -> DocumentRepository:
     return _document_repo
 
 
@@ -75,7 +79,7 @@ def _to_response(doc: Document) -> DocumentResponse:
 async def upload_document(
     file: UploadFile,
     user: CurrentUser = Depends(get_current_user),
-    repo: InMemoryDocumentRepository = Depends(get_document_repo),
+    repo: DocumentRepository = Depends(get_document_repo),
     storage: StorageBackend = Depends(get_storage_backend),
 ) -> DocumentResponse:
     """Upload a document (PDF or Word)."""
@@ -132,7 +136,7 @@ async def upload_document(
 @router.get("", response_model=list[DocumentResponse])
 def list_documents(
     user: CurrentUser = Depends(get_current_user),
-    repo: InMemoryDocumentRepository = Depends(get_document_repo),
+    repo: DocumentRepository = Depends(get_document_repo),
 ) -> list[DocumentResponse]:
     """List all documents for the current user."""
     docs = repo.list_by_user(user.user_id)
@@ -143,7 +147,7 @@ def list_documents(
 def get_document(
     document_id: str,
     user: CurrentUser = Depends(get_current_user),
-    repo: InMemoryDocumentRepository = Depends(get_document_repo),
+    repo: DocumentRepository = Depends(get_document_repo),
 ) -> DocumentResponse:
     """Get metadata for a specific document."""
     doc = repo.get_by_id(document_id)
@@ -159,7 +163,7 @@ def get_document(
 def delete_document(
     document_id: str,
     user: CurrentUser = Depends(get_current_user),
-    repo: InMemoryDocumentRepository = Depends(get_document_repo),
+    repo: DocumentRepository = Depends(get_document_repo),
     storage: StorageBackend = Depends(get_storage_backend),
 ) -> None:
     """Delete a document and its stored file."""

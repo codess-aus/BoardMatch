@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
-from boardmatch.drafts import Draft, InMemoryDraftRepository, new_draft_id
+from boardmatch.config import get_settings
+from boardmatch.drafts import Draft, new_draft_id
+from boardmatch.infrastructure.repositories.extended_factory import (
+    create_extended_repositories,
+)
 from boardmatch.validation import validate_draft
 
 from ... import coach, discovery, profiles
@@ -22,7 +26,8 @@ router = APIRouter(
 )
 
 _candidate = profiles.load_sample_candidate()
-_draft_repo = InMemoryDraftRepository()
+_repos = create_extended_repositories(get_settings())
+_draft_repo = _repos.draft_repo
 
 # Current prompt version
 _PROMPT_VERSION = "1.0"
@@ -31,7 +36,7 @@ _PROMPT_VERSION = "1.0"
 _profile_versions: dict[str, int] = {}
 
 
-def get_draft_repo() -> InMemoryDraftRepository:
+def get_draft_repo():
     """Accessor for test overrides."""
     return _draft_repo
 

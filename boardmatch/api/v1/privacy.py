@@ -9,11 +9,14 @@ from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.config import get_settings
-from boardmatch.documents import InMemoryDocumentRepository
-from boardmatch.integrations import InMemoryIntegrationRepository
+from boardmatch.documents import DocumentRepository
+from boardmatch.infrastructure.repositories.extended_factory import (
+    create_extended_repositories,
+)
+from boardmatch.integrations import IntegrationRepository
 from boardmatch.retention import (
-    InMemoryExtractedTextRepository,
-    InMemoryNetworkRepository,
+    ExtractedTextRepository,
+    NetworkRepository,
     RetentionPolicy,
     RetentionService,
     delete_network_data,
@@ -24,22 +27,23 @@ from boardmatch.storage import LocalStorageBackend
 router = APIRouter(prefix="/privacy", tags=["privacy"])
 
 # Module-level instances (replaced via dependency override in tests)
-_document_repo = InMemoryDocumentRepository()
-_extracted_text_repo = InMemoryExtractedTextRepository()
-_network_repo = InMemoryNetworkRepository()
+_extended_repos = create_extended_repositories(get_settings())
+_document_repo = _extended_repos.document_repo
+_extracted_text_repo = _extended_repos.extracted_text_repo
+_network_repo = _extended_repos.retention_network_repo
 _storage_backend = LocalStorageBackend()
-_integration_repo = InMemoryIntegrationRepository()
+_integration_repo = _extended_repos.integration_repo
 
 
-def get_document_repo() -> InMemoryDocumentRepository:
+def get_document_repo() -> DocumentRepository:
     return _document_repo
 
 
-def get_extracted_text_repo() -> InMemoryExtractedTextRepository:
+def get_extracted_text_repo() -> ExtractedTextRepository:
     return _extracted_text_repo
 
 
-def get_network_repo() -> InMemoryNetworkRepository:
+def get_network_repo() -> NetworkRepository:
     return _network_repo
 
 
@@ -47,7 +51,7 @@ def get_storage_backend() -> LocalStorageBackend:
     return _storage_backend
 
 
-def get_integration_repo() -> InMemoryIntegrationRepository:
+def get_integration_repo() -> IntegrationRepository:
     return _integration_repo
 
 
@@ -118,8 +122,8 @@ def list_retention_policies(
 @router.post("/cleanup", response_model=CleanupResultResponse)
 def run_cleanup(
     user: CurrentUser = Depends(get_required_user),
-    doc_repo: InMemoryDocumentRepository = Depends(get_document_repo),
-    text_repo: InMemoryExtractedTextRepository = Depends(get_extracted_text_repo),
+    doc_repo: DocumentRepository = Depends(get_document_repo),
+    text_repo: ExtractedTextRepository = Depends(get_extracted_text_repo),
     storage: LocalStorageBackend = Depends(get_storage_backend),
 ) -> CleanupResultResponse:
     """Run retention cleanup for the current user."""
@@ -144,7 +148,7 @@ def run_cleanup(
 @router.delete("/network-data", response_model=NetworkDeletionResponse)
 def delete_user_network_data(
     user: CurrentUser = Depends(get_required_user),
-    network_repo: InMemoryNetworkRepository = Depends(get_network_repo),
+    network_repo: NetworkRepository = Depends(get_network_repo),
 ) -> NetworkDeletionResponse:
     """Delete all network/connection data for the current user."""
     deleted = delete_network_data(user.user_id, network_repo)
@@ -159,7 +163,7 @@ def delete_user_network_data(
 def revoke_token(
     provider: str,
     user: CurrentUser = Depends(get_required_user),
-    integration_repo: InMemoryIntegrationRepository = Depends(get_integration_repo),
+    integration_repo: IntegrationRepository = Depends(get_integration_repo),
 ) -> TokenRevocationResponse:
     """Revoke an integration token for the given provider."""
     success = revoke_integration_token(user.user_id, provider, integration_repo)
@@ -178,11 +182,11 @@ def revoke_token(
 @router.delete("/all-data", response_model=DeletionRequestResponse)
 def delete_all_user_data(
     user: CurrentUser = Depends(get_required_user),
-    doc_repo: InMemoryDocumentRepository = Depends(get_document_repo),
-    text_repo: InMemoryExtractedTextRepository = Depends(get_extracted_text_repo),
-    network_repo: InMemoryNetworkRepository = Depends(get_network_repo),
+    doc_repo: DocumentRepository = Depends(get_document_repo),
+    text_repo: ExtractedTextRepository = Depends(get_extracted_text_repo),
+    network_repo: NetworkRepository = Depends(get_network_repo),
     storage: LocalStorageBackend = Depends(get_storage_backend),
-    integration_repo: InMemoryIntegrationRepository = Depends(get_integration_repo),
+    integration_repo: IntegrationRepository = Depends(get_integration_repo),
 ) -> DeletionRequestResponse:
     """Delete all user data (GDPR right to erasure)."""
     settings = get_settings()

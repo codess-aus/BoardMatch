@@ -35,12 +35,26 @@ BoardMatch is between demo and production-ready product:
   folds in the original `migrations/0001_opportunity_source_schema.sql` schema. `scripts/migrate.sh`
   and the CI/deploy migration step (`python -m boardmatch.infrastructure.db.migrations`) both run
   the real Alembic upgrade chain against `DATABASE_URL`.
-- Draft, document, network-connection, integration/audit-event, and retention-state storage still
-  use their own module-local in-memory implementations (`boardmatch/drafts.py`,
-  `boardmatch/documents.py`, `boardmatch/api/v1/network.py`, `boardmatch/integrations.py`,
-  `boardmatch/audit.py`, `boardmatch/retention.py`) and are not yet wired to the DB-backed layer —
-  tracked as follow-up work.
-- The DB-backed repositories are covered by contract tests (`tests/repositories/`) run against an
+- Draft, document, network-connection, integration/audit-event, and retention-state storage
+  each now have a durable DB-backed counterpart alongside their original module-local
+  in-memory implementations (`boardmatch/drafts.py`, `boardmatch/documents.py`,
+  `boardmatch/api/v1/network.py`, `boardmatch/integrations.py`, `boardmatch/audit.py`,
+  `boardmatch/retention.py`). A second factory
+  (`boardmatch/infrastructure/repositories/extended_factory.py`) selects memory vs DB-backed
+  implementations for these stores using the same `DATABASE_URL` scheme rule as the core
+  factory. The Alembic migration `0003_extended_stores` adds the corresponding tables
+  (`drafts`, `documents`, `network_connections`, `integrations`, `integration_audit_events`,
+  `audit_events`, `extracted_texts`, `retention_network_records`).
+  - Security note: real Microsoft Graph OAuth access tokens are still **never** persisted —
+    the DB-backed integration store only writes the one-way `token_hash` and metadata,
+    matching the in-memory implementation's invariant. Integration rows loaded from the
+    database always come back with `access_token=None`.
+  - `boardmatch/api/v1/network.py` and `boardmatch/retention.py` each maintain their own
+    separate network-connection store (a pre-existing duplication, not introduced by this
+    change) — both now have independent DB-backed tables (`network_connections` and
+    `retention_network_records` respectively) preserving that existing behavior.
+- The DB-backed repositories (core and extended) are covered by contract tests
+  (`tests/repositories/`) run against an
   ephemeral in-memory SQLite database (via SQLAlchemy) rather than a live PostgreSQL server, since
   no Postgres instance is available in this environment; validating against real Postgres in CI is
   tracked as follow-up work.
@@ -306,7 +320,7 @@ For exact request and response schemas, use the generated OpenAPI docs at `/docs
 - **Azure Blob Storage** — set `AZURE_STORAGE_ACCOUNT` (and optionally `AZURE_STORAGE_CONTAINER`, default `documents`) to store uploaded CVs/documents in Azure Blob Storage instead of local disk. Authenticates via `DefaultAzureCredential` — a managed identity in Azure, or `az login`/environment credentials locally. Azure Storage encrypts all data at rest by default (SSE), satisfying `STORAGE_ENCRYPTION_REQUIRED`. The blob client is configured with a bounded retry policy (`retry_total=3`) and explicit connection/read timeouts. **To activate**: grant the app's managed identity (or your local principal) the `Storage Blob Data Contributor` role on the storage account.
 - **Azure AI Document Intelligence** — set `AZURE_DOC_INTELLIGENCE_ENDPOINT` (and `AZURE_DOC_INTELLIGENCE_KEY`, or rely on managed identity if omitted) to OCR uploaded CVs/documents via the prebuilt-read model before mapping the recognized text onto profile fields. The outbound SDK call has retry-with-backoff (`boardmatch/resilience.py`) layered underneath the existing circuit breaker, which falls back to the deterministic template extractor after repeated failures (and immediately when not configured), so document processing never crashes because of a Document Intelligence outage. **To activate**: provision an Azure AI Document Intelligence (Form Recognizer) resource and supply its endpoint/key, or grant the app's managed identity the `Cognitive Services User` role.
 - **Microsoft Entra ID** — bearer-token authentication is available when `AUTH_ISSUER` and `AUTH_AUDIENCE` are configured.
-- **Microsoft Graph** — set `MS_GRAPH_CLIENT_ID`and `MS_GRAPH_CLIENT_SECRET` (plus `MS_GRAPH_TENANT_ID` and `MS_GRAPH_REDIRECT_URI` as needed) to perform a real OAuth authorization-code exchange against Microsoft identity platform on consent, and a real `GET /me/people` call against Microsoft Graph on network sync. Both outbound calls (`exchange_code_for_token`, `fetch_graph_people`) have retry-with-backoff and a circuit breaker (`boardmatch/resilience.py`) layered around them. Without `MS_GRAPH_CLIENT_ID`/`MS_GRAPH_CLIENT_SECRET`, the consent flow and sync use deterministic simulated/fixture data so local development and tests stay fully offline. Real access tokens are held only in memory for the life of the process (never persisted in the current in-memory store) and are cleared on revocation; only a one-way hash is retained for audit. **To activate**: register an Entra ID app with `User.Read`, `Calendars.Read`, `Mail.Read`, and `People.Read` delegated permissions, add a client secret, and set the redirect URI to match your deployment.
+- **Microsoft Graph** — set `MS_GRAPH_CLIENT_ID`and `MS_GRAPH_CLIENT_SECRET` (plus `MS_GRAPH_TENANT_ID` and `MS_GRAPH_REDIRECT_URI` as needed) to perform a real OAuth authorization-code exchange against Microsoft identity platform on consent, and a real `GET /me/people` call against Microsoft Graph on network sync. Both outbound calls (`exchange_code_for_token`, `fetch_graph_people`) have retry-with-backoff and a circuit breaker (`boardmatch/resilience.py`) layered around them. Without `MS_GRAPH_CLIENT_ID`/`MS_GRAPH_CLIENT_SECRET`, the consent flow and sync use deterministic simulated/fixture data so local development and tests stay fully offline. Real access tokens are held only in memory for the life of the process — never written to durable storage, in either the in-memory or DB-backed integration store — and are cleared on revocation; only a one-way hash is retained for audit. **To activate**: register an Entra ID app with `User.Read`, `Calendars.Read`, `Mail.Read`, and `People.Read` delegated permissions, add a client secret, and set the redirect URI to match your deployment.
 - **Azure Key Vault** — set `KEY_VAULT_URL` to load production secrets (currently `AZURE_OPENAI_API_KEY`) via `DefaultAzureCredential` instead of plain environment variables; unset secrets fall back to the environment automatically so local/test usage is unaffected.
 - **Power BI / Fabric** — readiness and monitoring responses provide data that can be adapted into dashboards.
 - **Copilot Studio** — the REST API can be used as the tool surface for a conversational front end.
