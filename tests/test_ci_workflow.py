@@ -35,6 +35,22 @@ class TestCIWorkflow:
     def test_has_test_job(self) -> None:
         assert "test" in self.workflow["jobs"]
 
+    def test_checkout_uses_full_history_for_gitleaks(self) -> None:
+        """gitleaks-action needs the full commit history to diff base...head
+        for pull_request events; a shallow (default) checkout causes it to
+        fail with an ambiguous revision range error."""
+        test_job = self.workflow["jobs"]["test"]
+        checkout_step = next(
+            (
+                s
+                for s in test_job["steps"]
+                if s.get("uses", "").startswith("actions/checkout")
+            ),
+            None,
+        )
+        assert checkout_step is not None
+        assert checkout_step.get("with", {}).get("fetch-depth") == 0
+
     def test_uses_python_312(self) -> None:
         test_job = self.workflow["jobs"]["test"]
         steps = test_job["steps"]
