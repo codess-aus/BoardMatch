@@ -38,7 +38,9 @@ def paths_for(candidate: Candidate, opportunity: Opportunity) -> list[IntroPath]
             reasons.append(f"is connected to {opportunity.organisation}")
         if connection.board_seats and not reasons:
             warmth += SAME_SECTOR_BONUS
-            reasons.append("holds a comparable board seat at " + connection.board_seats[0])
+            reasons.append(
+                "holds a comparable board seat at " + connection.board_seats[0]
+            )
         if "search" in connection.relationship.lower():
             warmth += SEARCH_FIRM_BONUS
             reasons.append("can brief the search firm running the process")

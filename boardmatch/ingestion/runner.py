@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from boardmatch.ingestion.base import OpportunitySource, SourceError
-from boardmatch.ingestion.models import IngestionRun, IngestionStatus
+from boardmatch.ingestion.models import IngestionRun
 from boardmatch.models import Opportunity
 
 

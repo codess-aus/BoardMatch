@@ -1,0 +1,6 @@
+[tool.ruff.lint]
+# Ignore B008: FastAPI's `Depends(...)` / `Query(...)` / `Header(...)` pattern
+# intentionally calls functions in argument defaults for dependency injection.
+# This is the documented, idiomatic FastAPI style and is a known false
+# positive for flake8-bugbear's B008 rule.
+ignore = ["B008"]

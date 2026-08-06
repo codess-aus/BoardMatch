@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
 
-from boardmatch.ingestion.base import OpportunitySource, SourceError
+from boardmatch.ingestion.base import SourceError
 from boardmatch.ingestion.models import SourceRecord
 from boardmatch.models import Opportunity, Remuneration
 
@@ -25,8 +24,8 @@ class JsonFileSource:
         self,
         filename: str,
         *,
-        source_key: Optional[str] = None,
-        data_dir: Optional[Path] = None,
+        source_key: str | None = None,
+        data_dir: Path | None = None,
     ) -> None:
         self.filename = filename
         self.source_key = source_key or Path(filename).stem
@@ -110,14 +109,14 @@ class JsonFileSource:
 
 
 # Convenience pre-configured adapters for the bundled demo data
-def gov_vacancies_source(data_dir: Optional[Path] = None) -> JsonFileSource:
+def gov_vacancies_source(data_dir: Path | None = None) -> JsonFileSource:
     """Source adapter for government vacancies demo data."""
     return JsonFileSource(
         "gov_vacancies.json", source_key="gov_vacancies", data_dir=data_dir
     )
 
 
-def mock_sources_source(data_dir: Optional[Path] = None) -> JsonFileSource:
+def mock_sources_source(data_dir: Path | None = None) -> JsonFileSource:
     """Source adapter for mock sources demo data."""
     return JsonFileSource(
         "mock_sources.json", source_key="mock_sources", data_dir=data_dir

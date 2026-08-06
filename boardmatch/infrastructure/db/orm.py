@@ -83,7 +83,7 @@ class ApplicationRow(Base):
     stage: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
-    events: Mapped[list["ApplicationEventRow"]] = relationship(
+    events: Mapped[list[ApplicationEventRow]] = relationship(
         back_populates="application", cascade="all, delete-orphan"
     )
 

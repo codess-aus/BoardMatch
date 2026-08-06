@@ -19,7 +19,13 @@ STAGE_POINTS: dict[ApplicationStage, int] = {
     ApplicationStage.CLOSED: 0,
 }
 
-CORE_GOVERNANCE_SKILLS = ("governance", "finance", "risk management", "esg", "cyber security")
+CORE_GOVERNANCE_SKILLS = (
+    "governance",
+    "finance",
+    "risk management",
+    "esg",
+    "cyber security",
+)
 
 
 @dataclass
@@ -29,8 +35,12 @@ class ReadinessTracker:
     candidate: Candidate
     applications: dict[str, Application] = field(default_factory=dict)
 
-    def track(self, opportunity_id: str, stage: ApplicationStage, notes: str = "") -> Application:
-        application = Application(opportunity_id=opportunity_id, stage=stage, notes=notes)
+    def track(
+        self, opportunity_id: str, stage: ApplicationStage, notes: str = ""
+    ) -> Application:
+        application = Application(
+            opportunity_id=opportunity_id, stage=stage, notes=notes
+        )
         self.applications[opportunity_id] = application
         return application
 
@@ -78,7 +88,9 @@ class ReadinessTracker:
                 if action not in actions:
                     actions.append(action)
         if not self.applications:
-            actions.insert(0, "Start your pipeline: track at least three paid seats this week.")
+            actions.insert(
+                0, "Start your pipeline: track at least three paid seats this week."
+            )
         return actions[:limit]
 
     def snapshot(self, fits: list[FitResult]) -> dict:

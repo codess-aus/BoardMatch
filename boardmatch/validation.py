@@ -43,11 +43,12 @@ def validate_board_cv(content: str) -> ValidationResult:
         errors.append("Board CV missing required section: Summary or value proposition")
 
     has_experience = any(
-        term in lower
-        for term in ["experience", "governance experience"]
+        term in lower for term in ["experience", "governance experience"]
     )
     if not has_experience:
-        errors.append("Board CV missing required section: Experience or governance experience")
+        errors.append(
+            "Board CV missing required section: Experience or governance experience"
+        )
 
     return ValidationResult(valid=len(errors) == 0, errors=errors)
 
@@ -80,9 +81,7 @@ def validate_outreach(content: str) -> ValidationResult:
 
     lower = content.lower()
 
-    has_greeting = any(
-        term in lower for term in ["dear ", "hi ", "hello "]
-    )
+    has_greeting = any(term in lower for term in ["dear ", "hi ", "hello "])
     if not has_greeting:
         errors.append("Outreach message missing greeting (Dear/Hi/Hello)")
 
@@ -104,7 +103,9 @@ def validate_length(content: str, max_chars: int = 5000) -> ValidationResult:
     if len(content) > max_chars:
         return ValidationResult(
             valid=False,
-            errors=[f"Content exceeds maximum length ({len(content)}/{max_chars} chars)"],
+            errors=[
+                f"Content exceeds maximum length ({len(content)}/{max_chars} chars)"
+            ],
         )
     return ValidationResult(valid=True, errors=[])
 
@@ -118,8 +119,6 @@ def validate_generated_label(engine: str) -> ValidationResult:
             errors=[f"Output must be labelled with a valid engine (got: '{engine}')"],
         )
     return ValidationResult(valid=True, errors=[])
-
-
 
 
 # Maximum prompt length in characters
@@ -139,7 +138,9 @@ _INJECTION_MARKERS = [
 ]
 
 
-def validate_prompt_length(prompt: str, max_chars: int = MAX_PROMPT_LENGTH) -> ValidationResult:
+def validate_prompt_length(
+    prompt: str, max_chars: int = MAX_PROMPT_LENGTH
+) -> ValidationResult:
     """Validate that a prompt does not exceed the maximum length."""
     if len(prompt) > max_chars:
         return ValidationResult(
@@ -181,7 +182,10 @@ def label_ai_output(content: str, engine: str) -> str:
 
 
 def validate_draft(
-    content: str, draft_type: str, engine: str, max_chars: int = 5000,
+    content: str,
+    draft_type: str,
+    engine: str,
+    max_chars: int = 5000,
     candidate_name: str = "",
 ) -> ValidationResult:
     """Run all applicable validations for a draft."""

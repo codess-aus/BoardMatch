@@ -10,17 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from boardmatch.api import app
-from boardmatch.infrastructure.repositories.memory import (
-    InMemoryApplicationRepository,
-    InMemoryCandidateRepository,
-)
-from boardmatch.models import Application, ApplicationStage, Candidate, Connection
-from boardmatch.api.v1.applications import get_application_repo, get_opportunity_repo
-from boardmatch.api.v1.readiness import (
-    get_application_repo as get_readiness_app_repo,
-    get_candidate_repo as get_readiness_candidate_repo,
-)
-from boardmatch.profile_api import get_candidate_repo as get_profile_candidate_repo
 
 AUTH_HEADERS = {"X-Dev-User-Id": "test-user-ui-bm035"}
 
@@ -195,7 +184,11 @@ class TestApplicationCreation:
 
         response = authed_client.post(
             "/api/v1/applications",
-            json={"opportunity_id": "test-opp-bm035", "stage": "applied", "notes": "UI test"},
+            json={
+                "opportunity_id": "test-opp-bm035",
+                "stage": "applied",
+                "notes": "UI test",
+            },
         )
         assert response.status_code == 201
         body = response.json()

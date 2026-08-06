@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import time
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker

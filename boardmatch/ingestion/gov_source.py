@@ -17,7 +17,7 @@ Some endpoints may require an API key passed via GOV_BOARD_VACANCY_API_KEY.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
@@ -55,9 +55,9 @@ class GovBoardVacancySource:
 
     def __init__(
         self,
-        url: Optional[str] = None,
+        url: str | None = None,
         *,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         timeout: int = _DEFAULT_TIMEOUT,
     ) -> None:
         self.url = url or os.environ.get("GOV_BOARD_VACANCY_URL", _DEFAULT_URL)
@@ -98,46 +98,34 @@ class GovBoardVacancySource:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = requests.get(
-                self.url, headers=headers, timeout=self.timeout
-            )
+            response = requests.get(self.url, headers=headers, timeout=self.timeout)
         except requests.exceptions.Timeout as exc:
             raise SourceTimeoutError(
                 f"Timed out after {self.timeout}s fetching {self.url}"
             ) from exc
         except requests.exceptions.RequestException as exc:
-            raise SourceError(
-                f"HTTP request failed for {self.url}: {exc}"
-            ) from exc
+            raise SourceError(f"HTTP request failed for {self.url}: {exc}") from exc
 
         if response.status_code == 429:
-            raise SourceRateLimitError(
-                f"Rate limited by {self.url} (HTTP 429)"
-            )
+            raise SourceRateLimitError(f"Rate limited by {self.url} (HTTP 429)")
         if response.status_code in (401, 403):
             raise SourceAuthError(
                 f"Auth failed for {self.url} (HTTP {response.status_code})"
             )
         if response.status_code != 200:
-            raise SourceError(
-                f"Unexpected HTTP {response.status_code} from {self.url}"
-            )
+            raise SourceError(f"Unexpected HTTP {response.status_code} from {self.url}")
 
         try:
             payload = response.json()
         except ValueError as exc:
-            raise SourceError(
-                f"Invalid JSON response from {self.url}"
-            ) from exc
+            raise SourceError(f"Invalid JSON response from {self.url}") from exc
 
         # Support both bare list and {"results": [...]} envelope
         if isinstance(payload, list):
             return payload
         if isinstance(payload, dict) and "results" in payload:
             return payload["results"]
-        raise SourceError(
-            f"Unexpected response structure from {self.url}"
-        )
+        raise SourceError(f"Unexpected response structure from {self.url}")
 
     def _parse(self, records: list[dict[str, Any]]) -> list[Opportunity]:
         """Normalise raw API records into Opportunity domain objects."""

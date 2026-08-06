@@ -61,9 +61,7 @@ class TestCreateProfile:
     """PUT /api/v1/profile - create a new profile."""
 
     def test_create_profile(self, client: TestClient):
-        resp = client.put(
-            "/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers()
-        )
+        resp = client.put("/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers())
         assert resp.status_code == 200
         data = resp.json()
         assert data["name"] == "Test User"
@@ -118,7 +116,7 @@ class TestUpdateProfile:
     def test_multiple_updates_increment_version(self, client: TestClient):
         client.put("/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers())
         for i in range(3):
-            updated = {**SAMPLE_PROFILE, "headline": f"v{i+2}"}
+            updated = {**SAMPLE_PROFILE, "headline": f"v{i + 2}"}
             client.put("/api/v1/profile", json=updated, headers=_headers())
         resp = client.get("/api/v1/profile", headers=_headers())
         assert resp.json()["profile_version"] == 4

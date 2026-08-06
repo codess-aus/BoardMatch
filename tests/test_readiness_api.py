@@ -108,7 +108,13 @@ class TestGetReadiness:
         candidate_repo, _, _ = _reset_repos
         candidate = Candidate(
             name="Test User",
-            skills=["governance", "finance", "risk management", "esg", "cyber security"],
+            skills=[
+                "governance",
+                "finance",
+                "risk management",
+                "esg",
+                "cyber security",
+            ],
         )
         candidate_repo.save_for_user(USER_ID, candidate)
 
@@ -213,7 +219,7 @@ class TestReadinessHistory:
 
     def test_multiple_snapshots_accumulate(self, _reset_repos):
         """Multiple readiness calculations produce multiple history entries."""
-        candidate_repo, application_repo, _ = _reset_repos
+        candidate_repo, _application_repo, _ = _reset_repos
 
         # First calculation with empty profile
         client.get("/api/v1/readiness", headers=AUTH_HEADER)

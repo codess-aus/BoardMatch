@@ -20,15 +20,18 @@ from ...suggestions import (
     SuggestionStatus,
 )
 
+
 def _get_candidate_repo() -> InMemoryCandidateRepository:
     """Lazy import to avoid circular dependency with profile_api."""
     from ...profile_api import _candidate_repo
+
     return _candidate_repo
 
 
 def _get_profile_versions() -> dict:
     """Lazy import to avoid circular dependency with profile_api."""
     from ...profile_api import _profile_versions
+
     return _profile_versions
 
 
@@ -58,7 +61,9 @@ def _to_response(suggestion: ProfileSuggestion) -> SuggestionResponse:
         confidence=suggestion.confidence,
         status=suggestion.status,
         created_at=suggestion.created_at.isoformat(),
-        resolved_at=suggestion.resolved_at.isoformat() if suggestion.resolved_at else None,
+        resolved_at=suggestion.resolved_at.isoformat()
+        if suggestion.resolved_at
+        else None,
     )
 
 
@@ -145,7 +150,9 @@ def accept_suggestion(
     repo.save_for_user(user.user_id, candidate)
 
     # Increment profile version
-    _get_profile_versions()[user.user_id] = _get_profile_versions().get(user.user_id, 1) + 1
+    _get_profile_versions()[user.user_id] = (
+        _get_profile_versions().get(user.user_id, 1) + 1
+    )
 
     # Mark fit evaluations as stale
     _stale_fits.add(user.user_id)

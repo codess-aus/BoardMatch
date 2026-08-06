@@ -215,8 +215,8 @@ class TestDbApplicationRepository:
 
     def test_events_round_trip(self, application_repo) -> None:
         app = application_repo.create("user-1", Application(opportunity_id="opp-1"))
-        from datetime import datetime, timezone
         import uuid
+        from datetime import datetime, timezone
 
         event = ApplicationEvent(
             id=str(uuid.uuid4()),
@@ -233,8 +233,8 @@ class TestDbApplicationRepository:
 
 class TestDbFitEvaluationRepository:
     def test_create_and_list(self, fit_evaluation_repo) -> None:
-        from datetime import datetime, timezone
         import uuid
+        from datetime import datetime, timezone
 
         evaluation = FitEvaluation(
             id=str(uuid.uuid4()),
@@ -256,8 +256,8 @@ class TestDbFitEvaluationRepository:
         assert results[0].score == 80
 
     def test_find_existing(self, fit_evaluation_repo) -> None:
-        from datetime import datetime, timezone
         import uuid
+        from datetime import datetime, timezone
 
         evaluation = FitEvaluation(
             id=str(uuid.uuid4()),

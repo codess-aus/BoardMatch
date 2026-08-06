@@ -7,14 +7,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import jwt
-import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 from boardmatch.auth import CurrentUser, get_current_user
 from boardmatch.auth_entra import EntraAuthProvider
-from boardmatch.config import Settings
 
 
 def _generate_rsa_key_pair():
@@ -136,9 +134,7 @@ class TestEntraAuthValidToken:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         body = response.json()
@@ -160,9 +156,7 @@ class TestEntraAuthValidToken:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         body = response.json()
@@ -180,9 +174,7 @@ class TestEntraAuthExpiredToken:
 
         token = _create_token(expired=True)
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401
 
@@ -198,9 +190,7 @@ class TestEntraAuthWrongAudience:
 
         token = _create_token(audience="api://wrong-app")
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401
 
@@ -218,9 +208,7 @@ class TestEntraAuthWrongIssuer:
             issuer="https://login.microsoftonline.com/other-tenant/v2.0"
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401
 
@@ -236,9 +224,7 @@ class TestEntraAuthMissingSubject:
 
         token = _create_token(subject=None)
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401
 
@@ -260,9 +246,7 @@ class TestEntraAuthAdminRole:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         body = response.json()
@@ -283,9 +267,7 @@ class TestEntraAuthAdminRole:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         body = response.json()
@@ -305,9 +287,7 @@ class TestEntraAuthAdminRole:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         body = response.json()
@@ -325,9 +305,7 @@ class TestEntraAuthErrorResponses:
 
         token = _create_token(expired=True)
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401
         body = response.json()
@@ -380,9 +358,7 @@ class TestEntraAuthTenant:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 200
         assert response.json()["user_id"] == "user-sub-123"
@@ -400,8 +376,6 @@ class TestEntraAuthTenant:
             }
         )
 
-        response = client.get(
-            "/api/me", headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get("/api/me", headers={"Authorization": f"Bearer {token}"})
 
         assert response.status_code == 401

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -13,12 +12,11 @@ from boardmatch.provenance import build_provenance
 
 from ... import discovery, network, profiles
 from ...config import get_settings
-from ...fit import rank, score_opportunity
+from ...fit import score_opportunity
 from ...infrastructure.repositories.factory import create_repositories
 from ...models import FitResult, IntroPath, Opportunity
 from .schemas import (
     IntroPathResponse,
-    OpportunityListResponse,
     OpportunityResponse,
     PaginatedOpportunityResponse,
     ProvenanceResponse,
@@ -35,7 +33,7 @@ _repo = create_repositories(
 ).opportunity_repo
 
 
-def _build_intro(intro: Optional[IntroPath]) -> Optional[IntroPathResponse]:
+def _build_intro(intro: IntroPath | None) -> IntroPathResponse | None:
     if intro is None:
         return None
     return IntroPathResponse(
@@ -49,7 +47,7 @@ def _build_intro(intro: Optional[IntroPath]) -> Optional[IntroPathResponse]:
 def _build_provenance_response(opp: Opportunity) -> ProvenanceResponse:
     """Build provenance indicators for an opportunity."""
     # Determine if this is from multiple sources (merged duplicate)
-    duplicate_sources: Optional[list[str]] = None
+    duplicate_sources: list[str] | None = None
     if ";" in opp.source:
         duplicate_sources = [s.strip() for s in opp.source.split(";")]
 
@@ -82,7 +80,7 @@ def _build_provenance_response(opp: Opportunity) -> ProvenanceResponse:
 
 
 def _build_opportunity_response(
-    fit: FitResult, intro: Optional[IntroPath] = None
+    fit: FitResult, intro: IntroPath | None = None
 ) -> OpportunityResponse:
     opp = fit.opportunity
     return OpportunityResponse(
@@ -122,15 +120,23 @@ def _build_opportunity_response_from_opp(opp: Opportunity) -> OpportunityRespons
 def list_opportunities(
     user: CurrentUser = Depends(get_required_user),
     page: int = Query(default=1, ge=1, description="Page number"),
-    page_size: int = Query(default=20, ge=1, le=100, description="Items per page (max 100)"),
-    status: Optional[str] = Query(default="open", description="Filter by status ('open' excludes expired)"),
+    page_size: int = Query(
+        default=20, ge=1, le=100, description="Items per page (max 100)"
+    ),
+    status: str | None = Query(
+        default="open", description="Filter by status ('open' excludes expired)"
+    ),
     paid_only: bool = Query(default=False, description="Only show paid opportunities"),
-    sector: Optional[str] = Query(default=None, description="Filter by sector"),
-    location: Optional[str] = Query(default=None, description="Filter by location"),
-    min_fee_aud: Optional[int] = Query(default=None, description="Minimum fee in AUD"),
-    closes_after: Optional[date] = Query(default=None, description="Closes on or after (YYYY-MM-DD)"),
-    closes_before: Optional[date] = Query(default=None, description="Closes on or before (YYYY-MM-DD)"),
-    source: Optional[str] = Query(default=None, description="Filter by source"),
+    sector: str | None = Query(default=None, description="Filter by sector"),
+    location: str | None = Query(default=None, description="Filter by location"),
+    min_fee_aud: int | None = Query(default=None, description="Minimum fee in AUD"),
+    closes_after: date | None = Query(
+        default=None, description="Closes on or after (YYYY-MM-DD)"
+    ),
+    closes_before: date | None = Query(
+        default=None, description="Closes on or before (YYYY-MM-DD)"
+    ),
+    source: str | None = Query(default=None, description="Filter by source"),
 ) -> PaginatedOpportunityResponse:
     """List opportunities with pagination and composable filters."""
     filters: dict[str, object] = {}

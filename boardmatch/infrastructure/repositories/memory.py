@@ -16,7 +16,6 @@ from boardmatch.models import (
     Candidate,
     FitEvaluation,
     Opportunity,
-    VALID_STAGE_TRANSITIONS,
 )
 
 

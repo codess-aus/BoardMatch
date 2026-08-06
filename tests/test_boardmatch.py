@@ -1,5 +1,11 @@
-from boardmatch import ApplicationStage, Remuneration
-from boardmatch import coach, discovery, network, profiles
+from boardmatch import (
+    ApplicationStage,
+    Remuneration,
+    coach,
+    discovery,
+    network,
+    profiles,
+)
 from boardmatch.fit import rank, score_opportunity
 from boardmatch.readiness import ReadinessTracker
 
@@ -29,7 +35,10 @@ def test_min_fee_and_sector_filters():
 
 
 def test_get_opportunity():
-    assert discovery.get_opportunity("gov-001").organisation == "Australian Digital Health Agency"
+    assert (
+        discovery.get_opportunity("gov-001").organisation
+        == "Australian Digital Health Agency"
+    )
     assert discovery.get_opportunity("nope") is None
 
 
@@ -54,9 +63,10 @@ def test_director_course_lifts_score():
     upskilled = candidate()
     upskilled.credentials.append("GAICD (AICD Company Directors Course)")
     opportunity = discovery.get_opportunity("asx-101")
-    assert score_opportunity(upskilled, opportunity).score > score_opportunity(
-        baseline, opportunity
-    ).score
+    assert (
+        score_opportunity(upskilled, opportunity).score
+        > score_opportunity(baseline, opportunity).score
+    )
 
 
 def test_network_finds_direct_board_seat_path():

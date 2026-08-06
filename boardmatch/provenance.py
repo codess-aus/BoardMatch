@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import Enum
-from typing import Optional
 
 from boardmatch.models import Opportunity, Remuneration
 
@@ -40,17 +39,17 @@ class ProvenanceInfo:
     """Provenance and trust metadata for an opportunity."""
 
     source_name: str
-    source_url: Optional[str]
-    first_seen: Optional[datetime]
-    last_verified: Optional[datetime]
-    closing_date: Optional[date]
+    source_url: str | None
+    first_seen: datetime | None
+    last_verified: datetime | None
+    closing_date: date | None
     status: OpportunityStatus
     remuneration_confidence: RemunerationConfidence
     is_stale: bool = False
     duplicate_sources: list[str] | None = None
 
     @property
-    def stale_warning(self) -> Optional[str]:
+    def stale_warning(self) -> str | None:
         if self.is_stale:
             return "This listing has not been verified recently and may be outdated."
         return None
@@ -59,9 +58,9 @@ class ProvenanceInfo:
 def compute_status(
     opportunity: Opportunity,
     *,
-    last_verified: Optional[datetime] = None,
+    last_verified: datetime | None = None,
     withdrawn: bool = False,
-    now: Optional[date] = None,
+    now: date | None = None,
 ) -> OpportunityStatus:
     """Determine the trust-aware status of an opportunity."""
     if withdrawn:
@@ -70,7 +69,7 @@ def compute_status(
     if last_verified is None:
         return OpportunityStatus.UNVERIFIED
 
-    effective_now = now or date.today()
+    effective_now = now or datetime.now(timezone.utc).date()
 
     if opportunity.closes_on:
         try:
@@ -96,9 +95,9 @@ def compute_remuneration_confidence(opportunity: Opportunity) -> RemunerationCon
 
 
 def is_stale(
-    last_verified: Optional[datetime],
+    last_verified: datetime | None,
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
     threshold_days: int = STALE_THRESHOLD_DAYS,
 ) -> bool:
     """Check if a record is stale based on last verification time."""
@@ -112,15 +111,17 @@ def is_stale(
 def build_provenance(
     opportunity: Opportunity,
     *,
-    first_seen: Optional[datetime] = None,
-    last_verified: Optional[datetime] = None,
+    first_seen: datetime | None = None,
+    last_verified: datetime | None = None,
     withdrawn: bool = False,
-    duplicate_sources: Optional[list[str]] = None,
-    now: Optional[datetime] = None,
+    duplicate_sources: list[str] | None = None,
+    now: datetime | None = None,
 ) -> ProvenanceInfo:
     """Build complete provenance info for an opportunity."""
     effective_now = now or datetime.now(timezone.utc)
-    effective_now_date = effective_now.date() if isinstance(effective_now, datetime) else effective_now
+    effective_now_date = (
+        effective_now.date() if isinstance(effective_now, datetime) else effective_now
+    )
 
     status = compute_status(
         opportunity,
@@ -132,7 +133,7 @@ def build_provenance(
     remuneration_conf = compute_remuneration_confidence(opportunity)
     stale = is_stale(last_verified, now=effective_now)
 
-    closing_date: Optional[date] = None
+    closing_date: date | None = None
     if opportunity.closes_on:
         try:
             closing_date = date.fromisoformat(opportunity.closes_on)

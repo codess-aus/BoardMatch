@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
 
 
 class IngestionStatus(Enum):
@@ -33,14 +32,14 @@ class IngestionRun:
 
     source_key: str
     status: IngestionStatus = IngestionStatus.PENDING
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     records_fetched: int = 0
     records_stored: int = 0
     records_created: int = 0
     records_updated: int = 0
     records_deactivated: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     def start(self) -> None:
         """Mark the run as started."""

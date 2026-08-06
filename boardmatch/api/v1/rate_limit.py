@@ -29,9 +29,7 @@ class RateLimiter:
         """Check if the user is within their rate limit."""
         now = time.time()
         cutoff = now - self.window_seconds
-        self._requests[user_id] = [
-            ts for ts in self._requests[user_id] if ts > cutoff
-        ]
+        self._requests[user_id] = [ts for ts in self._requests[user_id] if ts > cutoff]
         return len(self._requests[user_id]) < self.max_requests
 
     def record(self, user_id: str) -> None:
@@ -42,9 +40,7 @@ class RateLimiter:
         """Return how many requests the user has left in the current window."""
         now = time.time()
         cutoff = now - self.window_seconds
-        self._requests[user_id] = [
-            ts for ts in self._requests[user_id] if ts > cutoff
-        ]
+        self._requests[user_id] = [ts for ts in self._requests[user_id] if ts > cutoff]
         return max(0, self.max_requests - len(self._requests[user_id]))
 
     def reset(self, user_id: str) -> None:

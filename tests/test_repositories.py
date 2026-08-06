@@ -15,7 +15,6 @@ from boardmatch.infrastructure.repositories.memory import (
 )
 from boardmatch.models import Candidate, Opportunity, Remuneration
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -110,9 +109,7 @@ class TestCandidateRepository:
         candidate_repo.save_for_user("user-1", second)
         assert candidate_repo.get_for_user("user-1") is second
 
-    def test_user_isolation(
-        self, candidate_repo: InMemoryCandidateRepository
-    ) -> None:
+    def test_user_isolation(self, candidate_repo: InMemoryCandidateRepository) -> None:
         """Each user can only see their own profile."""
         alice = _make_candidate("Alice")
         bob = _make_candidate("Bob")

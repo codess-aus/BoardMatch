@@ -11,12 +11,10 @@ from fastapi.testclient import TestClient
 from boardmatch.api import app
 from boardmatch.api.v1.documents import (
     _document_repo,
-    get_document_repo,
     get_storage_backend,
 )
 from boardmatch.documents import (
     MAX_FILE_SIZE_BYTES,
-    SUPPORTED_CONTENT_TYPES,
     compute_content_hash,
 )
 from boardmatch.storage import StorageBackend
@@ -58,7 +56,7 @@ def _pdf_content() -> bytes:
 
 def _upload_file(
     client: TestClient,
-    content: bytes = None,
+    content: bytes | None = None,
     filename: str = "resume.pdf",
     content_type: str = "application/pdf",
     user_id: str = "user-001",
@@ -143,7 +141,7 @@ class TestUploadDocument:
 
     def test_storage_failure_handling(self, client, mock_storage):
         """Storage failure returns 500."""
-        mock_storage.save.side_effect = IOError("Disk full")
+        mock_storage.save.side_effect = OSError("Disk full")
         resp = _upload_file(client)
 
         assert resp.status_code == 500
@@ -180,9 +178,7 @@ class TestGetDocument:
         resp = _upload_file(client)
         doc_id = resp.json()["id"]
 
-        resp = client.get(
-            f"/api/v1/profile/documents/{doc_id}", headers=_headers()
-        )
+        resp = client.get(f"/api/v1/profile/documents/{doc_id}", headers=_headers())
         assert resp.status_code == 200
         assert resp.json()["id"] == doc_id
 
@@ -208,9 +204,7 @@ class TestDeleteDocument:
         assert del_resp.status_code == 204
 
         # Verify it's gone
-        get_resp = client.get(
-            f"/api/v1/profile/documents/{doc_id}", headers=_headers()
-        )
+        get_resp = client.get(f"/api/v1/profile/documents/{doc_id}", headers=_headers())
         assert get_resp.status_code == 404
         mock_storage.delete.assert_called_once()
 

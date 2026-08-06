@@ -240,9 +240,7 @@ class TestGetFitEvaluation:
         assert resp.json()["id"] == eval_id
 
     def test_not_found(self, client: TestClient):
-        resp = client.get(
-            "/api/v1/fit-evaluations/nonexistent", headers=_headers()
-        )
+        resp = client.get("/api/v1/fit-evaluations/nonexistent", headers=_headers())
         assert resp.status_code == 404
 
     def test_requires_auth(self, client: TestClient):

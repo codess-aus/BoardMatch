@@ -141,16 +141,12 @@ class TestGetDraft:
         drafts = _draft_repo.list_for_user("test-user-drafts")
         draft_id = drafts[0].id
 
-        resp = client.get(
-            f"/api/v1/coaching/drafts/{draft_id}", headers=AUTH_HEADER
-        )
+        resp = client.get(f"/api/v1/coaching/drafts/{draft_id}", headers=AUTH_HEADER)
         assert resp.status_code == 200
         assert resp.json()["id"] == draft_id
 
     def test_get_draft_not_found(self):
-        resp = client.get(
-            "/api/v1/coaching/drafts/nonexistent", headers=AUTH_HEADER
-        )
+        resp = client.get("/api/v1/coaching/drafts/nonexistent", headers=AUTH_HEADER)
         assert resp.status_code == 404
 
 
@@ -162,16 +158,12 @@ class TestDeleteDraft:
         drafts = _draft_repo.list_for_user("test-user-drafts")
         draft_id = drafts[0].id
 
-        resp = client.delete(
-            f"/api/v1/coaching/drafts/{draft_id}", headers=AUTH_HEADER
-        )
+        resp = client.delete(f"/api/v1/coaching/drafts/{draft_id}", headers=AUTH_HEADER)
         assert resp.status_code == 204
         assert _draft_repo.get_by_id(draft_id, "test-user-drafts") is None
 
     def test_delete_nonexistent(self):
-        resp = client.delete(
-            "/api/v1/coaching/drafts/nonexistent", headers=AUTH_HEADER
-        )
+        resp = client.delete("/api/v1/coaching/drafts/nonexistent", headers=AUTH_HEADER)
         assert resp.status_code == 404
 
 

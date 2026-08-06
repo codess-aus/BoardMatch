@@ -69,9 +69,7 @@ def _mock_response(
 @pytest.fixture
 def source() -> GovBoardVacancySource:
     """A source instance with a test URL."""
-    return GovBoardVacancySource(
-        url="https://test.example.com/vacancies", timeout=5
-    )
+    return GovBoardVacancySource(url="https://test.example.com/vacancies", timeout=5)
 
 
 # ---------------------------------------------------------------------------
@@ -104,9 +102,7 @@ class TestGovBoardVacancySourceFetch:
     @patch("boardmatch.ingestion.gov_source.requests.get")
     def test_fetch_handles_envelope_response(self, mock_get, source):
         """Supports {"results": [...]} envelope format."""
-        mock_get.return_value = _mock_response(
-            json_data={"results": [SAMPLE_VACANCY]}
-        )
+        mock_get.return_value = _mock_response(json_data={"results": [SAMPLE_VACANCY]})
 
         results = source.fetch()
 
@@ -122,9 +118,7 @@ class TestGovBoardVacancySourceFetch:
             source.fetch()
 
     @patch("boardmatch.ingestion.gov_source.requests.get")
-    def test_fetch_rate_limit_raises_source_rate_limit_error(
-        self, mock_get, source
-    ):
+    def test_fetch_rate_limit_raises_source_rate_limit_error(self, mock_get, source):
         """HTTP 429 raises SourceRateLimitError."""
         mock_get.return_value = _mock_response(status_code=429)
 
@@ -148,9 +142,7 @@ class TestGovBoardVacancySourceFetch:
             source.fetch()
 
     @patch("boardmatch.ingestion.gov_source.requests.get")
-    def test_fetch_malformed_response_skips_bad_records(
-        self, mock_get, source
-    ):
+    def test_fetch_malformed_response_skips_bad_records(self, mock_get, source):
         """Malformed individual records are skipped, valid ones kept."""
         malformed = {"bad": "data"}  # missing required fields
         mock_get.return_value = _mock_response(
@@ -300,9 +292,7 @@ class TestIngestionRunner:
     def test_malformed_response_partial_run(self, mock_get, source):
         """Partially malformed data still yields a successful run."""
         malformed = {"no": "good_fields"}
-        mock_get.return_value = _mock_response(
-            json_data=[SAMPLE_VACANCY, malformed]
-        )
+        mock_get.return_value = _mock_response(json_data=[SAMPLE_VACANCY, malformed])
 
         run = run_ingestion(source)
 
@@ -342,9 +332,7 @@ class TestIngestionRunner:
             remuneration=Remuneration.PAID,
         )
 
-        run = run_ingestion(
-            source, existing={"gov-001": existing_opp}
-        )
+        run = run_ingestion(source, existing={"gov-001": existing_opp})
 
         # Run failed — existing data NOT touched
         assert run.status == IngestionStatus.FAILED

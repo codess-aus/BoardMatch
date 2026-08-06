@@ -228,12 +228,14 @@ class TestInvalidFixtureHandling:
         candidate_repo: InMemoryCandidateRepository,
         local_settings: Settings,
     ) -> None:
-        with patch(
-            "boardmatch.infrastructure.importer._DATA_DIR",
-            Path("/nonexistent/path"),
+        with (
+            patch(
+                "boardmatch.infrastructure.importer._DATA_DIR",
+                Path("/nonexistent/path"),
+            ),
+            pytest.raises(FileNotFoundError, match="Fixture file not found"),
         ):
-            with pytest.raises(FileNotFoundError, match="Fixture file not found"):
-                import_demo_data(opportunity_repo, candidate_repo, local_settings)
+            import_demo_data(opportunity_repo, candidate_repo, local_settings)
 
     def test_opportunity_missing_id_skipped(
         self,
@@ -246,9 +248,7 @@ class TestInvalidFixtureHandling:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             (tmp_path / "mock_sources.json").write_text("[]")
-            (tmp_path / "sample_candidate.json").write_text(
-                '{"name": "Test User"}'
-            )
+            (tmp_path / "sample_candidate.json").write_text('{"name": "Test User"}')
             (tmp_path / "gov_vacancies.json").write_text(json.dumps(bad_data))
 
             with patch("boardmatch.infrastructure.importer._DATA_DIR", tmp_path):
@@ -269,9 +269,7 @@ class TestInvalidFixtureHandling:
             tmp_path = Path(tmpdir)
             (tmp_path / "gov_vacancies.json").write_text('{"not": "an array"}')
             (tmp_path / "mock_sources.json").write_text("[]")
-            (tmp_path / "sample_candidate.json").write_text(
-                '{"name": "Test User"}'
-            )
+            (tmp_path / "sample_candidate.json").write_text('{"name": "Test User"}')
 
             with patch("boardmatch.infrastructure.importer._DATA_DIR", tmp_path):
                 result = import_demo_data(

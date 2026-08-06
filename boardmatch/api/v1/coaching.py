@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,11 +13,13 @@ from boardmatch.validation import validate_draft
 
 from ... import coach, discovery, profiles
 from ...fit import score_opportunity
-from .rate_limit import draft_rate_limiter
 from .authorization import require_active_user
+from .rate_limit import draft_rate_limiter
 from .schemas import CoachingBoardCvResponse
 
-router = APIRouter(prefix="/coaching", tags=["coaching"], dependencies=[Depends(require_active_user)])
+router = APIRouter(
+    prefix="/coaching", tags=["coaching"], dependencies=[Depends(require_active_user)]
+)
 
 _candidate = profiles.load_sample_candidate()
 _draft_repo = InMemoryDraftRepository()
@@ -58,7 +59,7 @@ def _current_profile_version(user_id: str) -> int:
     return _profile_versions.get(user_id, 1)
 
 
-def _model_name() -> Optional[str]:
+def _model_name() -> str | None:
     if coach.azure_openai_configured():
         return os.getenv("AZURE_OPENAI_DEPLOYMENT")
     return None
@@ -72,10 +73,10 @@ class DraftResponse(BaseModel):
     draft_type: str
     content: str
     engine: str
-    model_name: Optional[str] = None
+    model_name: str | None = None
     prompt_version: str
     profile_version: int
-    opportunity_id: Optional[str] = None
+    opportunity_id: str | None = None
     created_at: str
 
 
@@ -104,7 +105,7 @@ def _draft_to_response(d: Draft) -> DraftResponse:
 @router.post("/board-cv", response_model=CoachingBoardCvResponse)
 def draft_board_cv(
     user: CurrentUser = Depends(get_required_user),
-    opportunity_id: Optional[str] = None,
+    opportunity_id: str | None = None,
 ) -> CoachingBoardCvResponse:
     """Generate a board CV draft, optionally tailored to an opportunity."""
     _check_rate_limit(user.user_id)
@@ -167,7 +168,7 @@ def draft_director_bio(
 @router.post("/outreach", response_model=DraftResponse)
 def draft_outreach(
     user: CurrentUser = Depends(get_required_user),
-    opportunity_id: Optional[str] = None,
+    opportunity_id: str | None = None,
 ) -> DraftResponse:
     """Generate an outreach message and persist the draft."""
     _check_rate_limit(user.user_id)

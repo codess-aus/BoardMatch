@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 
-import pytest
-
 from boardmatch.monitoring import (
     ALERT_RULES,
     DATABASE_LATENCY,
@@ -21,14 +19,13 @@ from boardmatch.monitoring import (
     StructuredFormatter,
     configure_structured_logging,
     evaluate_alerts,
+    metrics,
     record_database_latency,
     record_ingestion_result,
     record_request_duration,
     record_stale_opportunities,
     redact_pii,
-    metrics,
 )
-
 
 # ---------------------------------------------------------------------------
 # Metric emission tests
@@ -58,8 +55,12 @@ class TestMetricsCollector:
     def test_increment_with_labels(self) -> None:
         self.collector.increment("errors", labels={"status_code": "500"})
         self.collector.increment("errors", labels={"status_code": "404"})
-        assert self.collector.get_counter("errors", labels={"status_code": "500"}) == 1.0
-        assert self.collector.get_counter("errors", labels={"status_code": "404"}) == 1.0
+        assert (
+            self.collector.get_counter("errors", labels={"status_code": "500"}) == 1.0
+        )
+        assert (
+            self.collector.get_counter("errors", labels={"status_code": "404"}) == 1.0
+        )
 
     def test_observe_histogram(self) -> None:
         self.collector.observe("latency", 10.5)
@@ -280,12 +281,22 @@ class TestIngestionFailureAlert:
     def test_record_ingestion_result_success(self) -> None:
         metrics.reset()
         record_ingestion_result("gov_source", success=True)
-        assert metrics.get_counter(INGESTION_SUCCESS_COUNT, labels={"source_key": "gov_source"}) == 1.0
+        assert (
+            metrics.get_counter(
+                INGESTION_SUCCESS_COUNT, labels={"source_key": "gov_source"}
+            )
+            == 1.0
+        )
 
     def test_record_ingestion_result_failure(self) -> None:
         metrics.reset()
         record_ingestion_result("gov_source", success=False)
-        assert metrics.get_counter(INGESTION_FAILURE_COUNT, labels={"source_key": "gov_source"}) == 1.0
+        assert (
+            metrics.get_counter(
+                INGESTION_FAILURE_COUNT, labels={"source_key": "gov_source"}
+            )
+            == 1.0
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -336,11 +347,21 @@ class TestRequestMetrics:
 
     def test_record_request_duration_error_increments_error_count(self) -> None:
         record_request_duration("POST", "/api/v1/data", 500, 100.0)
-        assert metrics.get_counter(HTTP_ERROR_COUNT, labels={"status_code": "500", "method": "POST"}) == 1.0
+        assert (
+            metrics.get_counter(
+                HTTP_ERROR_COUNT, labels={"status_code": "500", "method": "POST"}
+            )
+            == 1.0
+        )
 
     def test_record_request_2xx_does_not_increment_error_count(self) -> None:
         record_request_duration("GET", "/api/v1/ok", 200, 5.0)
-        assert metrics.get_counter(HTTP_ERROR_COUNT, labels={"status_code": "200", "method": "GET"}) == 0.0
+        assert (
+            metrics.get_counter(
+                HTTP_ERROR_COUNT, labels={"status_code": "200", "method": "GET"}
+            )
+            == 0.0
+        )
 
     def test_stale_opportunities_gauge(self) -> None:
         record_stale_opportunities(5)

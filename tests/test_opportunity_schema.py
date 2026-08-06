@@ -31,7 +31,12 @@ def _create_source(db: sqlite3.Connection, source_key: str = "gov") -> str:
         INSERT INTO ingestion_sources (id, source_key, name, source_url)
         VALUES (?, ?, ?, ?)
         """,
-        (source_id, source_key, "Government board vacancies", "https://example.gov/jobs"),
+        (
+            source_id,
+            source_key,
+            "Government board vacancies",
+            "https://example.gov/jobs",
+        ),
     )
     return source_id
 
@@ -88,7 +93,10 @@ def test_multiple_sources_can_link_to_one_opportunity(db: sqlite3.Connection):
     gov_source_id = _create_source(db, "gov")
     aicd_source_id = _create_source(db, "aicd")
 
-    for source_id, external_id in ((gov_source_id, "GOV-123"), (aicd_source_id, "AICD-987")):
+    for source_id, external_id in (
+        (gov_source_id, "GOV-123"),
+        (aicd_source_id, "AICD-987"),
+    ):
         db.execute(
             """
             INSERT INTO opportunity_source_records (
@@ -171,7 +179,9 @@ def test_expiry_status_update_retains_historical_source_records(db: sqlite3.Conn
         ),
     )
 
-    db.execute("UPDATE opportunities SET status = 'expired' WHERE id = ?", (opportunity_id,))
+    db.execute(
+        "UPDATE opportunities SET status = 'expired' WHERE id = ?", (opportunity_id,)
+    )
 
     row = db.execute(
         """
@@ -206,11 +216,16 @@ def test_remuneration_and_missing_fee_validation(db: sqlite3.Connection):
 
     with pytest.raises(sqlite3.IntegrityError):
         _create_opportunity(
-            db, remuneration="voluntary", fee_amount=Decimal("1000.00"), fee_currency="AUD"
+            db,
+            remuneration="voluntary",
+            fee_amount=Decimal("1000.00"),
+            fee_currency="AUD",
         )
 
     with pytest.raises(sqlite3.IntegrityError):
-        _create_opportunity(db, remuneration="paid", fee_amount=Decimal("1000.00"), fee_currency=None)
+        _create_opportunity(
+            db, remuneration="paid", fee_amount=Decimal("1000.00"), fee_currency=None
+        )
 
 
 def test_verification_timestamps_and_statuses_are_stored(db: sqlite3.Connection):

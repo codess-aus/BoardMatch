@@ -66,8 +66,9 @@ def run_alembic_upgrade(revision: str = "head") -> None:
     environment variable) as the migration target, matching how the
     application itself resolves its database connection.
     """
-    from alembic import command
     from alembic.config import Config
+
+    from alembic import command
 
     config = Config(str(ALEMBIC_INI))
     config.set_main_option("script_location", str(REPO_ROOT / "alembic"))
