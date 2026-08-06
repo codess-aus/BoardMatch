@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
+from boardmatch.infrastructure.repositories.factory import create_repositories
 from boardmatch.infrastructure.repositories.memory import (
     InMemoryApplicationRepository,
     InMemoryCandidateRepository,
@@ -30,8 +32,9 @@ SCORING_VERSION = "1.0.0"
 _history_store: dict[str, list[dict[str, Any]]] = {}
 
 # Shared repository instances (same pattern as applications/profile)
-_candidate_repo = InMemoryCandidateRepository()
-_application_repo = InMemoryApplicationRepository()
+_repos = create_repositories(get_settings())
+_candidate_repo = _repos.candidate_repo
+_application_repo = _repos.application_repo
 
 
 def get_candidate_repo() -> InMemoryCandidateRepository:

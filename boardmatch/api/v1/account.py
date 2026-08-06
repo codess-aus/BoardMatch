@@ -9,7 +9,9 @@ from pydantic import BaseModel
 
 from boardmatch.audit import AuditAction, AuditLogger
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
 from boardmatch.drafts import InMemoryDraftRepository
+from boardmatch.infrastructure.repositories.factory import create_repositories
 from boardmatch.infrastructure.repositories.memory import (
     InMemoryApplicationRepository,
     InMemoryCandidateRepository,
@@ -24,8 +26,9 @@ from boardmatch.integrations import (
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
 
 _audit_logger = AuditLogger()
-_candidate_repo = InMemoryCandidateRepository()
-_application_repo = InMemoryApplicationRepository()
+_repos = create_repositories(get_settings())
+_candidate_repo = _repos.candidate_repo
+_application_repo = _repos.application_repo
 _draft_repo = InMemoryDraftRepository()
 _integration_repo = InMemoryIntegrationRepository()
 

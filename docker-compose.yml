@@ -37,7 +37,7 @@ services:
       - "8000:8000"
     environment:
       APP_ENV: ${APP_ENV:-local}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-boardmatch}:${POSTGRES_PASSWORD:-boardmatch}@db:5432/${POSTGRES_DB:-boardmatch}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-boardmatch}:${POSTGRES_PASSWORD:-boardmatch}@db:5432/${POSTGRES_DB:-boardmatch}
       AUTH_ISSUER: ${AUTH_ISSUER:-}
       AUTH_AUDIENCE: ${AUTH_AUDIENCE:-}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}

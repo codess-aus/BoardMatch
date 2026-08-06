@@ -5,6 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .auth import CurrentUser, get_current_user
+from .config import get_settings
+from .infrastructure.repositories.factory import create_repositories
 from .infrastructure.repositories.memory import InMemoryCandidateRepository
 from .models import Candidate, Connection
 from .profile_schemas import (
@@ -25,8 +27,8 @@ router = APIRouter(
     dependencies=[Depends(require_active_user)],
 )
 
-# Module-level in-memory store shared across requests
-_candidate_repo = InMemoryCandidateRepository()
+# Module-level store shared across requests (memory or DB-backed per Settings)
+_candidate_repo = create_repositories(get_settings()).candidate_repo
 _profile_versions: dict[str, int] = {}
 _profile_statuses: dict[str, ProfileStatus] = {}
 

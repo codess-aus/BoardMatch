@@ -12,8 +12,9 @@ from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.provenance import build_provenance
 
 from ... import discovery, network, profiles
+from ...config import get_settings
 from ...fit import rank, score_opportunity
-from ...infrastructure.repositories.memory import InMemoryOpportunityRepository
+from ...infrastructure.repositories.factory import create_repositories
 from ...models import FitResult, IntroPath, Opportunity
 from .schemas import (
     IntroPathResponse,
@@ -27,8 +28,11 @@ router = APIRouter(tags=["opportunities"])
 
 _candidate = profiles.load_sample_candidate()
 
-# Module-level repository seeded with discovery data
-_repo = InMemoryOpportunityRepository(discovery.discover())
+# Module-level repository seeded with discovery data (memory or DB-backed
+# depending on Settings.database_url)
+_repo = create_repositories(
+    get_settings(), seed_opportunities=discovery.discover()
+).opportunity_repo
 
 
 def _build_intro(intro: Optional[IntroPath]) -> Optional[IntroPathResponse]:

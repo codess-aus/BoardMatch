@@ -24,10 +24,30 @@ BoardMatch is between demo and production-ready product:
 
 - The app runs locally with FastAPI and a deterministic CLI demo.
 - The stable public API surface is under `/api/v1`.
-- Several repositories are in-memory implementations for local/test usage; `boardmatch/infrastructure/repositories/db.py` is still a placeholder for a future database-backed repository layer.
-- SQL migration files and helpers currently target disposable SQLite-compatible test databases, while `docker-compose.yml` provides PostgreSQL for local infrastructure experiments.
-- Authentication is environment-aware: local/test can use development headers, while production requires configured issuer/audience settings and rejects the development bypass.
-- Demo source data remains available in `boardmatch/data/`; production startup is designed not to automatically import synthetic fixtures.
+- A DB-backed repository layer now exists in `boardmatch/infrastructure/repositories/db.py`,
+  built on SQLAlchemy 2.x. It provides Postgres-compatible parity for the four repositories
+  previously implemented only in-memory in `boardmatch/infrastructure/repositories/memory.py`
+  (candidate profiles, opportunities, applications/events, fit evaluations). A factory
+  (`boardmatch/infrastructure/repositories/factory.py`) selects memory vs DB-backed repositories
+  based on the `DATABASE_URL` scheme: SQLite keeps using in-memory repositories (local/test
+  default), while `postgresql://`/`postgresql+psycopg://` URLs use the SQLAlchemy-backed classes.
+- Alembic manages schema migrations end to end (`alembic/`), including a baseline revision that
+  folds in the original `migrations/0001_opportunity_source_schema.sql` schema. `scripts/migrate.sh`
+  and the CI/deploy migration step (`python -m boardmatch.infrastructure.db.migrations`) both run
+  the real Alembic upgrade chain against `DATABASE_URL`.
+- Draft, document, network-connection, integration/audit-event, and retention-state storage still
+  use their own module-local in-memory implementations (`boardmatch/drafts.py`,
+  `boardmatch/documents.py`, `boardmatch/api/v1/network.py`, `boardmatch/integrations.py`,
+  `boardmatch/audit.py`, `boardmatch/retention.py`) and are not yet wired to the DB-backed layer —
+  tracked as follow-up work.
+- The DB-backed repositories are covered by contract tests (`tests/repositories/`) run against an
+  ephemeral in-memory SQLite database (via SQLAlchemy) rather than a live PostgreSQL server, since
+  no Postgres instance is available in this environment; validating against real Postgres in CI is
+  tracked as follow-up work.
+- Authentication is environment-aware: local/test can use development headers, while production
+  requires configured issuer/audience settings and rejects the development bypass.
+- Demo source data remains available in `boardmatch/data/`; production startup is designed not to
+  automatically import synthetic fixtures.
 
 ## How to Use Guide
 
