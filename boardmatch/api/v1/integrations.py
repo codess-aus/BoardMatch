@@ -11,11 +11,13 @@ from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.config import Settings, get_settings
+from boardmatch.infrastructure.repositories.extended_factory import (
+    create_extended_repositories,
+)
 from boardmatch.integrations import (
     AuditEvent,
     AuditEventType,
     GraphTokenExchangeError,
-    InMemoryIntegrationRepository,
     Integration,
     IntegrationRepository,
     IntegrationStatus,
@@ -29,7 +31,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 # Module-level repository instance (replaced via dependency override in tests)
-_repository: IntegrationRepository = InMemoryIntegrationRepository()
+_repository: IntegrationRepository = create_extended_repositories(
+    get_settings()
+).integration_repo
 
 # In-memory state store for OAuth CSRF protection
 _pending_states: dict[str, str] = {}  # state_token -> user_id

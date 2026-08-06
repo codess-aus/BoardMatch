@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from boardmatch.api.v1.integrations import get_repository as get_integration_repository
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
 from boardmatch.integrations import (
     GraphApiError,
     IntegrationRepository,
@@ -69,10 +71,28 @@ class InMemoryNetworkRepository:
         return False
 
 
-_network_repo = InMemoryNetworkRepository()
+class NetworkConnectionRepository(Protocol):
+    """Structural contract shared by the in-memory and DB-backed stores."""
+
+    def list_by_user(self, user_id: str) -> list[NetworkConnection]: ...
+    def get(self, connection_id: str) -> NetworkConnection | None: ...
+    def save(self, connection: NetworkConnection) -> None: ...
+    def delete(self, connection_id: str) -> bool: ...
 
 
-def get_network_repository() -> InMemoryNetworkRepository:
+def _create_network_repo():
+    """Build the network connection repo (memory or DB) via the shared factory."""
+    from boardmatch.infrastructure.repositories.extended_factory import (
+        create_network_connection_repo,
+    )
+
+    return create_network_connection_repo(get_settings())
+
+
+_network_repo = _create_network_repo()
+
+
+def get_network_repository():
     """Dependency for the network repository."""
     return _network_repo
 
@@ -174,7 +194,7 @@ def _to_response(conn: NetworkConnection) -> NetworkConnectionResponse:
 @router.get("/connections", response_model=NetworkConnectionListResponse)
 def list_connections(
     user: CurrentUser = Depends(get_required_user),
-    repo: InMemoryNetworkRepository = Depends(get_network_repository),
+    repo: NetworkConnectionRepository = Depends(get_network_repository),
 ) -> NetworkConnectionListResponse:
     """List the authenticated user's network connections."""
     connections = repo.list_by_user(user.user_id)
@@ -186,7 +206,7 @@ def list_connections(
 @router.post("/sync", response_model=SyncResponse, status_code=status.HTTP_200_OK)
 def sync_connections(
     user: CurrentUser = Depends(get_required_user),
-    repo: InMemoryNetworkRepository = Depends(get_network_repository),
+    repo: NetworkConnectionRepository = Depends(get_network_repository),
     integration_repo: IntegrationRepository = Depends(get_integration_repository),
 ) -> SyncResponse:
     """Trigger a sync from Microsoft Graph. Requires active Microsoft consent."""
@@ -240,7 +260,7 @@ def update_connection(
     connection_id: str,
     body: ConnectionUpdateRequest,
     user: CurrentUser = Depends(get_required_user),
-    repo: InMemoryNetworkRepository = Depends(get_network_repository),
+    repo: NetworkConnectionRepository = Depends(get_network_repository),
 ) -> NetworkConnectionResponse:
     """Update a connection (approve, adjust strength)."""
     conn = repo.get(connection_id)
@@ -262,7 +282,7 @@ def update_connection(
 def delete_connection(
     connection_id: str,
     user: CurrentUser = Depends(get_required_user),
-    repo: InMemoryNetworkRepository = Depends(get_network_repository),
+    repo: NetworkConnectionRepository = Depends(get_network_repository),
 ) -> None:
     """Remove a connection. Deleted connections are excluded from intro paths."""
     conn = repo.get(connection_id)
@@ -284,7 +304,7 @@ intro_router = APIRouter(tags=["network"])
 def get_intro_paths(
     opportunity_id: str,
     user: CurrentUser = Depends(get_required_user),
-    repo: InMemoryNetworkRepository = Depends(get_network_repository),
+    repo: NetworkConnectionRepository = Depends(get_network_repository),
 ) -> IntroPathsResponse:
     """Get ranked intro paths for an opportunity using only approved connections."""
     from boardmatch import discovery
