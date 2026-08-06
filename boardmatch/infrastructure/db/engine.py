@@ -60,7 +60,7 @@ def build_engine(
     if statement_timeout_ms:
 
         @event.listens_for(engine, "connect")
-        def _set_statement_timeout(dbapi_connection, connection_record) -> None:  # noqa: ANN001
+        def _set_statement_timeout(dbapi_connection, connection_record) -> None:
             cursor = dbapi_connection.cursor()
             try:
                 cursor.execute(f"SET statement_timeout = {statement_timeout_ms}")

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -26,8 +26,12 @@ class TestDockerfileSyntax:
 
     def test_dockerfile_multi_stage(self) -> None:
         content = DOCKERFILE.read_text()
-        from_count = sum(1 for line in content.splitlines() if line.strip().startswith("FROM"))
-        assert from_count >= 2, "Dockerfile must use multi-stage build (at least 2 FROM)"
+        from_count = sum(
+            1 for line in content.splitlines() if line.strip().startswith("FROM")
+        )
+        assert from_count >= 2, (
+            "Dockerfile must use multi-stage build (at least 2 FROM)"
+        )
 
     def test_dockerfile_has_non_root_user(self) -> None:
         content = DOCKERFILE.read_text()
@@ -40,7 +44,9 @@ class TestDockerfileSyntax:
 
     def test_dockerfile_has_healthcheck(self) -> None:
         content = DOCKERFILE.read_text()
-        assert "HEALTHCHECK" in content, "Dockerfile must have a HEALTHCHECK instruction"
+        assert "HEALTHCHECK" in content, (
+            "Dockerfile must have a HEALTHCHECK instruction"
+        )
 
     def test_dockerfile_exposes_port(self) -> None:
         content = DOCKERFILE.read_text()
@@ -79,7 +85,9 @@ class TestDockerCompose:
 
     def test_compose_has_healthcheck(self) -> None:
         content = DOCKER_COMPOSE.read_text()
-        assert "healthcheck" in content, "docker-compose.yml must configure health checks"
+        assert "healthcheck" in content, (
+            "docker-compose.yml must configure health checks"
+        )
 
     def test_compose_has_volume(self) -> None:
         content = DOCKER_COMPOSE.read_text()
@@ -119,6 +127,7 @@ class TestMigrationScript:
     def test_migrate_script_is_executable(self) -> None:
         script = REPO_ROOT / "scripts" / "migrate.sh"
         import os
+
         assert os.access(script, os.X_OK), "scripts/migrate.sh must be executable"
 
     def test_migrate_script_requires_database_url(self) -> None:
@@ -140,6 +149,7 @@ class TestContainerBuild:
             capture_output=True,
             text=True,
             timeout=300,
+            check=False,
         )
         assert result.returncode == 0, f"Docker build failed:\n{result.stderr}"
 
@@ -149,6 +159,7 @@ class TestContainerBuild:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
         assert result.returncode == 0
         assert "root" not in result.stdout.strip(), (

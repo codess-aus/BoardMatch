@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from boardmatch.api import app
 from boardmatch.api.v1.schemas import PaginatedOpportunityResponse
-from boardmatch.domain.repositories import PaginatedResult
 from boardmatch.infrastructure.repositories.memory import InMemoryOpportunityRepository
 from boardmatch.models import Opportunity, Remuneration
 
@@ -301,9 +299,9 @@ class TestAPIPagination:
         assert resp.status_code == 200
         body = resp.json()
         # All returned items should not be expired (closes_on >= today or null)
-        from datetime import date
+        from datetime import datetime, timezone
 
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         for item in body["items"]:
             if item.get("closes_on"):
                 assert item["closes_on"] >= today

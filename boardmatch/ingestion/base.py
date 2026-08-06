@@ -6,7 +6,6 @@ from typing import Protocol
 
 from boardmatch.models import Opportunity
 
-
 # ---------------------------------------------------------------------------
 # Error hierarchy
 # ---------------------------------------------------------------------------

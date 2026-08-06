@@ -88,6 +88,7 @@ def create_fit_evaluation(
         )
 
     from boardmatch.profile_api import _profile_versions
+
     profile_version = _profile_versions.get(user.user_id, 1)
 
     existing = eval_repo.find_existing(

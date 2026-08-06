@@ -139,6 +139,99 @@ class TestProductionAuth:
         assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
+def _make_required_user_app(settings: Settings) -> FastAPI:
+    """Minimal app wired to the stricter get_required_user dependency."""
+    from boardmatch.auth import get_required_user
+    from boardmatch.config import get_settings
+
+    test_app = FastAPI()
+
+    @test_app.get("/api/me-required")
+    def me(user: CurrentUser = Depends(get_required_user)):
+        return {"user_id": user.user_id, "roles": user.roles}
+
+    test_app.dependency_overrides[get_settings] = lambda: settings
+    return test_app
+
+
+class TestProductionAuthBypassAudit:
+    """BM security audit: dev bypass headers must be fully inert when
+    APP_ENV=production, for both get_current_user and the stricter
+    get_required_user dependency used by coaching/document/profile routes."""
+
+    @pytest.fixture
+    def production_settings(self) -> Settings:
+        return Settings(
+            app_env=AppEnvironment.PRODUCTION,
+            database_url="postgresql://host/db",
+            auth_issuer="https://login.microsoftonline.com/tenant/v2.0",
+            auth_audience="api://boardmatch",
+            azure_openai_endpoint="https://oai.openai.azure.com",
+            azure_openai_api_key="secret-key",
+            azure_openai_deployment="gpt-4",
+            azure_storage_account="bmstorageaccount",
+        )
+
+    def test_required_user_rejects_dev_headers_in_production(self, production_settings):
+        app = _make_required_user_app(production_settings)
+        client = TestClient(app)
+
+        response = client.get(
+            "/api/me-required",
+            headers={"X-Dev-User-Id": "hacker", "X-Dev-User-Roles": "admin"},
+        )
+
+        assert response.status_code == 401
+
+    def test_required_user_rejects_unauthenticated_in_production(
+        self, production_settings
+    ):
+        app = _make_required_user_app(production_settings)
+        client = TestClient(app)
+
+        response = client.get("/api/me-required")
+
+        assert response.status_code == 401
+
+    def test_required_user_accepts_dev_headers_outside_production(self):
+        app = _make_required_user_app(Settings(app_env=AppEnvironment.LOCAL))
+        client = TestClient(app)
+
+        response = client.get("/api/me-required", headers={"X-Dev-User-Id": "alice"})
+
+        assert response.status_code == 200
+        assert response.json()["user_id"] == "alice"
+
+    def test_dev_auth_provider_never_selected_when_app_env_is_production(
+        self, production_settings
+    ):
+        """Even if callers construct DevAuthProvider directly, _get_provider
+        must never hand it back once APP_ENV=production and no Entra issuer
+        is configured — it must fail closed with the stub provider."""
+        from pydantic import ValidationError
+
+        from boardmatch.auth import DevAuthProvider, _get_provider
+
+        # Settings validation requires AUTH_ISSUER/AUDIENCE in production, so
+        # constructing production settings without them should raise —
+        # confirming there is no code path to reach production without
+        # configured auth.
+        with pytest.raises(ValidationError):
+            Settings(
+                app_env=AppEnvironment.PRODUCTION,
+                database_url="postgresql://host/db",
+                auth_issuer=None,
+                auth_audience=None,
+                azure_openai_endpoint="https://oai.openai.azure.com",
+                azure_openai_api_key="secret-key",
+                azure_openai_deployment="gpt-4",
+                azure_storage_account="bmstorageaccount",
+            )
+
+        provider = _get_provider(production_settings)
+        assert not isinstance(provider, DevAuthProvider)
+
+
 class TestAuthProtocol:
     """Tests that AuthProvider protocol works correctly."""
 

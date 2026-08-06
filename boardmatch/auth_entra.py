@@ -57,7 +57,7 @@ class EntraAuthProvider:
             response = requests.get(well_known_url, timeout=10)
             response.raise_for_status()
             return response.json()["jwks_uri"]
-        except Exception:
+        except Exception:  # noqa: BLE001 - any discovery failure falls back to the default path
             logger.warning("Failed to discover JWKS URI, using default Microsoft path")
             return f"{issuer.rstrip('/')}/discovery/v2.0/keys"
 

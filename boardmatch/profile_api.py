@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from .api.v1.authorization import require_active_user
 from .auth import CurrentUser, get_current_user
 from .config import get_settings
 from .infrastructure.repositories.factory import create_repositories
@@ -19,7 +20,6 @@ from .profile_schemas import (
     ProfileUpdateRequest,
     SkillsUpdateRequest,
 )
-from .api.v1.authorization import require_active_user
 
 router = APIRouter(
     prefix="/api/v1/profile",

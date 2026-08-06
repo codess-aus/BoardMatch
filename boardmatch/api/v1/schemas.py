@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -57,8 +56,8 @@ class OpportunityResponse(BaseModel):
     missing_desirable: list[str]
     rationale: list[str]
     gap_actions: list[str]
-    intro_path: Optional[IntroPathResponse] = None
-    provenance: Optional[ProvenanceResponse] = None
+    intro_path: IntroPathResponse | None = None
+    provenance: ProvenanceResponse | None = None
 
 
 class OpportunityListResponse(BaseModel):
@@ -121,10 +120,6 @@ class ApplicationEventListResponse(BaseModel):
     events: list[ApplicationEventResponse]
 
 
-class ReadinessResponse(BaseModel):
-    """Placeholder response for readiness endpoint."""
-
-
 class ReadinessComponentsResponse(BaseModel):
     """Breakdown of readiness score components."""
 
@@ -176,7 +171,6 @@ class PaginatedOpportunityResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-
 
 
 class FitEvaluationCreateRequest(BaseModel):

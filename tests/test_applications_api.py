@@ -173,9 +173,7 @@ class TestGetApplication:
         assert resp.json()["id"] == app_id
 
     def test_not_found(self, client: TestClient):
-        resp = client.get(
-            "/api/v1/applications/nonexistent", headers=_headers()
-        )
+        resp = client.get("/api/v1/applications/nonexistent", headers=_headers())
         assert resp.status_code == 404
 
 
@@ -270,9 +268,7 @@ class TestDeleteApplication:
         assert resp.status_code == 404
 
     def test_delete_not_found(self, client: TestClient):
-        resp = client.delete(
-            "/api/v1/applications/nonexistent", headers=_headers()
-        )
+        resp = client.delete("/api/v1/applications/nonexistent", headers=_headers())
         assert resp.status_code == 404
 
 

@@ -22,7 +22,6 @@ from boardmatch.retention import (
     RedactingLogFilter,
     RetentionPolicy,
     RetentionService,
-    StorageEncryptionError,
     delete_network_data,
     export_after_deletion,
     redact_sensitive_data,
@@ -74,17 +73,31 @@ class TestRetentionCleanupSelection:
         doc_repo = InMemoryDocumentRepository()
         storage = LocalStorageBackend()
         policy = RetentionPolicy(document_retention_days=30)
-        old_doc = Document(id="old-doc", user_id="user-1", filename="old.pdf",
-            content_type="application/pdf", size_bytes=1024,
-            content_hash="abc123", storage_path="docs/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60))
+        old_doc = Document(
+            id="old-doc",
+            user_id="user-1",
+            filename="old.pdf",
+            content_type="application/pdf",
+            size_bytes=1024,
+            content_hash="abc123",
+            storage_path="docs/old.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
+        )
         doc_repo.save(old_doc)
-        recent_doc = Document(id="recent-doc", user_id="user-1", filename="recent.pdf",
-            content_type="application/pdf", size_bytes=1024,
-            content_hash="def456", storage_path="docs/recent.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10))
+        recent_doc = Document(
+            id="recent-doc",
+            user_id="user-1",
+            filename="recent.pdf",
+            content_type="application/pdf",
+            size_bytes=1024,
+            content_hash="def456",
+            storage_path="docs/recent.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
         doc_repo.save(recent_doc)
-        service = RetentionService(policy=policy, document_repo=doc_repo, storage_backend=storage)
+        service = RetentionService(
+            policy=policy, document_repo=doc_repo, storage_backend=storage
+        )
         expired = service.get_expired_documents("user-1")
         assert len(expired) == 1
         assert expired[0].id == "old-doc"
@@ -93,7 +106,9 @@ class TestRetentionCleanupSelection:
         text_repo = InMemoryExtractedTextRepository()
         policy = RetentionPolicy(extracted_text_retention_days=30)
         text_repo.save("doc-old", "Old CV text content", "user-1")
-        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
+        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(
+            days=60
+        )
         text_repo.save("doc-recent", "Recent CV text", "user-1")
         service = RetentionService(policy=policy, extracted_text_repo=text_repo)
         expired = service.get_expired_extracted_texts("user-1")
@@ -103,10 +118,16 @@ class TestRetentionCleanupSelection:
     def test_no_expired_when_within_retention(self):
         doc_repo = InMemoryDocumentRepository()
         policy = RetentionPolicy(document_retention_days=365)
-        doc = Document(id="fresh-doc", user_id="user-1", filename="fresh.pdf",
-            content_type="application/pdf", size_bytes=1024,
-            content_hash="abc", storage_path="docs/fresh.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10))
+        doc = Document(
+            id="fresh-doc",
+            user_id="user-1",
+            filename="fresh.pdf",
+            content_type="application/pdf",
+            size_bytes=1024,
+            content_hash="abc",
+            storage_path="docs/fresh.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=10),
+        )
         doc_repo.save(doc)
         service = RetentionService(policy=policy, document_repo=doc_repo)
         expired = service.get_expired_documents("user-1")
@@ -121,12 +142,20 @@ class TestExpiredDocumentDeletion:
         storage = LocalStorageBackend()
         policy = RetentionPolicy(document_retention_days=30)
         storage.save("docs/old.pdf", b"old document content")
-        old_doc = Document(id="old-doc", user_id="user-1", filename="old.pdf",
-            content_type="application/pdf", size_bytes=1024,
-            content_hash="abc123", storage_path="docs/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60))
+        old_doc = Document(
+            id="old-doc",
+            user_id="user-1",
+            filename="old.pdf",
+            content_type="application/pdf",
+            size_bytes=1024,
+            content_hash="abc123",
+            storage_path="docs/old.pdf",
+            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
+        )
         doc_repo.save(old_doc)
-        service = RetentionService(policy=policy, document_repo=doc_repo, storage_backend=storage)
+        service = RetentionService(
+            policy=policy, document_repo=doc_repo, storage_backend=storage
+        )
         deleted = service.cleanup_expired_documents("user-1")
         assert deleted == 1
         assert doc_repo.get_by_id("old-doc") is None
@@ -136,7 +165,9 @@ class TestExpiredDocumentDeletion:
         text_repo = InMemoryExtractedTextRepository()
         policy = RetentionPolicy(extracted_text_retention_days=30)
         text_repo.save("doc-old", "Extracted CV content here", "user-1")
-        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
+        text_repo._store["doc-old"].created_at = datetime.now(timezone.utc) - timedelta(
+            days=60
+        )
         service = RetentionService(policy=policy, extracted_text_repo=text_repo)
         deleted = service.cleanup_expired_texts("user-1")
         assert deleted == 1
@@ -146,16 +177,32 @@ class TestExpiredDocumentDeletion:
         doc_repo = InMemoryDocumentRepository()
         text_repo = InMemoryExtractedTextRepository()
         storage = LocalStorageBackend()
-        policy = RetentionPolicy(document_retention_days=30, extracted_text_retention_days=30)
+        policy = RetentionPolicy(
+            document_retention_days=30, extracted_text_retention_days=30
+        )
         storage.save("docs/old.pdf", b"content")
-        doc_repo.save(Document(id="old-doc", user_id="user-1", filename="old.pdf",
-            content_type="application/pdf", size_bytes=1024, content_hash="hash1",
-            storage_path="docs/old.pdf",
-            uploaded_at=datetime.now(timezone.utc) - timedelta(days=60)))
+        doc_repo.save(
+            Document(
+                id="old-doc",
+                user_id="user-1",
+                filename="old.pdf",
+                content_type="application/pdf",
+                size_bytes=1024,
+                content_hash="hash1",
+                storage_path="docs/old.pdf",
+                uploaded_at=datetime.now(timezone.utc) - timedelta(days=60),
+            )
+        )
         text_repo.save("old-text-doc", "text", "user-1")
-        text_repo._store["old-text-doc"].created_at = datetime.now(timezone.utc) - timedelta(days=60)
-        service = RetentionService(policy=policy, document_repo=doc_repo,
-            storage_backend=storage, extracted_text_repo=text_repo)
+        text_repo._store["old-text-doc"].created_at = datetime.now(
+            timezone.utc
+        ) - timedelta(days=60)
+        service = RetentionService(
+            policy=policy,
+            document_repo=doc_repo,
+            storage_backend=storage,
+            extracted_text_repo=text_repo,
+        )
         result = service.run_cleanup("user-1")
         assert result.documents_deleted == 1
         assert result.extracted_texts_deleted == 1
@@ -185,9 +232,13 @@ class TestTokenRevocation:
 
     def test_revoke_active_token(self):
         repo = InMemoryIntegrationRepository()
-        integration = Integration(user_id="user-1", provider="microsoft",
-            status=IntegrationStatus.ACTIVE, scopes=["User.Read"],
-            token_hash=hash_token("some-token"))
+        integration = Integration(
+            user_id="user-1",
+            provider="microsoft",
+            status=IntegrationStatus.ACTIVE,
+            scopes=["User.Read"],
+            token_hash=hash_token("some-token"),
+        )
         repo.save(integration)
         result = revoke_integration_token("user-1", "microsoft", repo)
         assert result is True
@@ -199,9 +250,13 @@ class TestTokenRevocation:
 
     def test_revoke_creates_audit_event(self):
         repo = InMemoryIntegrationRepository()
-        integration = Integration(user_id="user-1", provider="microsoft",
-            status=IntegrationStatus.ACTIVE, scopes=["User.Read", "Mail.Read"],
-            token_hash=hash_token("token-1"))
+        integration = Integration(
+            user_id="user-1",
+            provider="microsoft",
+            status=IntegrationStatus.ACTIVE,
+            scopes=["User.Read", "Mail.Read"],
+            token_hash=hash_token("token-1"),
+        )
         repo.save(integration)
         revoke_integration_token("user-1", "microsoft", repo)
         events = repo.get_audit_events("user-1")
@@ -211,9 +266,13 @@ class TestTokenRevocation:
 
     def test_revoke_already_revoked(self):
         repo = InMemoryIntegrationRepository()
-        integration = Integration(user_id="user-1", provider="microsoft",
+        integration = Integration(
+            user_id="user-1",
+            provider="microsoft",
             status=IntegrationStatus.REVOKED,
-            revoked_at=datetime.now(timezone.utc), token_hash=None)
+            revoked_at=datetime.now(timezone.utc),
+            token_hash=None,
+        )
         repo.save(integration)
         result = revoke_integration_token("user-1", "microsoft", repo)
         assert result is False
@@ -252,16 +311,30 @@ class TestLogRedaction:
 
     def test_redacting_log_filter(self):
         log_filter = RedactingLogFilter()
-        record = logging.LogRecord(name="test", level=logging.INFO, pathname="",
-            lineno=0, msg="User alice@example.com logged in", args=None, exc_info=None)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="User alice@example.com logged in",
+            args=None,
+            exc_info=None,
+        )
         log_filter.filter(record)
         assert "alice@example.com" not in record.msg
         assert "[EMAIL_REDACTED]" in record.msg
 
     def test_redacting_log_filter_with_args(self):
         log_filter = RedactingLogFilter()
-        record = logging.LogRecord(name="test", level=logging.INFO, pathname="",
-            lineno=0, msg="User %s logged in", args=("alice@example.com",), exc_info=None)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="User %s logged in",
+            args=("alice@example.com",),
+            exc_info=None,
+        )
         log_filter.filter(record)
         assert "alice@example.com" not in str(record.args)
 
@@ -270,15 +343,18 @@ class TestStorageEncryption:
     """Production storage encryption is required."""
 
     def test_production_requires_encryption(self):
-        result = validate_storage_encryption(Settings(
-            app_env=AppEnvironment.PRODUCTION,
-            database_url="postgresql://db:5432/bm",
-            auth_issuer="https://login.microsoftonline.com/tenant/v2.0",
-            auth_audience="api://boardmatch",
-            azure_openai_endpoint="https://openai.azure.com",
-            azure_openai_api_key="secret-key",
-            azure_openai_deployment="gpt-4",
-            azure_storage_account="boardmatchstorage"))
+        result = validate_storage_encryption(
+            Settings(
+                app_env=AppEnvironment.PRODUCTION,
+                database_url="postgresql://db:5432/bm",
+                auth_issuer="https://login.microsoftonline.com/tenant/v2.0",
+                auth_audience="api://boardmatch",
+                azure_openai_endpoint="https://openai.azure.com",
+                azure_openai_api_key="secret-key",
+                azure_openai_deployment="gpt-4",
+                azure_storage_account="boardmatchstorage",
+            )
+        )
         assert result is True
 
     def test_local_does_not_require_encryption(self):
@@ -296,7 +372,8 @@ class TestStorageEncryption:
                 azure_openai_api_key="secret-key",
                 azure_openai_deployment="gpt-4",
                 azure_storage_account=None,
-                storage_encryption_required=True)
+                storage_encryption_required=True,
+            )
 
 
 class TestExportAfterDeletion:
@@ -311,9 +388,17 @@ class TestExportAfterDeletion:
 
     def test_export_shows_remaining_if_partial(self):
         doc_repo = InMemoryDocumentRepository()
-        doc_repo.save(Document(id="doc-1", user_id="user-1", filename="remaining.pdf",
-            content_type="application/pdf", size_bytes=512, content_hash="hash",
-            storage_path="docs/remaining.pdf"))
+        doc_repo.save(
+            Document(
+                id="doc-1",
+                user_id="user-1",
+                filename="remaining.pdf",
+                content_type="application/pdf",
+                size_bytes=512,
+                content_hash="hash",
+                storage_path="docs/remaining.pdf",
+            )
+        )
         result = export_after_deletion("user-1", doc_repo)
         assert result["remaining_documents"] == 1
 
@@ -323,16 +408,35 @@ class TestExportAfterDeletion:
         storage = LocalStorageBackend()
         storage.save("docs/a.pdf", b"content a")
         storage.save("docs/b.pdf", b"content b")
-        doc_repo.save(Document(id="doc-a", user_id="user-1", filename="a.pdf",
-            content_type="application/pdf", size_bytes=100, content_hash="h1",
-            storage_path="docs/a.pdf"))
-        doc_repo.save(Document(id="doc-b", user_id="user-1", filename="b.pdf",
-            content_type="application/pdf", size_bytes=200, content_hash="h2",
-            storage_path="docs/b.pdf"))
+        doc_repo.save(
+            Document(
+                id="doc-a",
+                user_id="user-1",
+                filename="a.pdf",
+                content_type="application/pdf",
+                size_bytes=100,
+                content_hash="h1",
+                storage_path="docs/a.pdf",
+            )
+        )
+        doc_repo.save(
+            Document(
+                id="doc-b",
+                user_id="user-1",
+                filename="b.pdf",
+                content_type="application/pdf",
+                size_bytes=200,
+                content_hash="h2",
+                storage_path="docs/b.pdf",
+            )
+        )
         text_repo.save("doc-a", "CV text A", "user-1")
         text_repo.save("doc-b", "CV text B", "user-1")
-        service = RetentionService(document_repo=doc_repo, storage_backend=storage,
-            extracted_text_repo=text_repo)
+        service = RetentionService(
+            document_repo=doc_repo,
+            storage_backend=storage,
+            extracted_text_repo=text_repo,
+        )
         result = service.delete_all_user_data("user-1")
         assert result.documents_deleted == 2
         assert result.extracted_texts_deleted == 2
@@ -360,7 +464,9 @@ class TestExtractedTextRetention:
         repo = InMemoryExtractedTextRepository()
         policy = RetentionPolicy(extracted_text_retention_days=7)
         repo.save("doc-1", "Old text", "user-1")
-        repo._store["doc-1"].created_at = datetime.now(timezone.utc) - timedelta(days=14)
+        repo._store["doc-1"].created_at = datetime.now(timezone.utc) - timedelta(
+            days=14
+        )
         service = RetentionService(policy=policy, extracted_text_repo=repo)
         deleted = service.cleanup_expired_texts("user-1")
         assert deleted == 1

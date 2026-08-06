@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 from .models import Candidate, FitResult, Opportunity
 
@@ -33,7 +32,7 @@ def azure_openai_configured() -> bool:
     )
 
 
-def _generate(prompt: str) -> Optional[str]:
+def _generate(prompt: str) -> str | None:
     """Call Azure OpenAI when configured; return None to fall back to templates."""
     if not azure_openai_configured():
         return None
@@ -61,15 +60,19 @@ def _generate(prompt: str) -> Optional[str]:
             temperature=0.4,
         )
         return response.choices[0].message.content
-    except Exception:  # pragma: no cover - network/credential failures
+    except Exception:  # noqa: BLE001 - pragma: no cover - network/credential failures
         return None
 
 
 def _bullets(items: list[str], prefix: str = "- ") -> str:
-    return "\n".join(f"{prefix}{item}" for item in items) if items else f"{prefix}(none recorded)"
+    return (
+        "\n".join(f"{prefix}{item}" for item in items)
+        if items
+        else f"{prefix}(none recorded)"
+    )
 
 
-def board_cv(candidate: Candidate, fit: Optional[FitResult] = None) -> Draft:
+def board_cv(candidate: Candidate, fit: FitResult | None = None) -> Draft:
     """Draft a board CV — governance-first, unlike an executive resume."""
     target = fit.opportunity if fit else None
     prompt = (
@@ -145,7 +148,7 @@ def outreach_message(
     opportunity: Opportunity,
     *,
     recipient: str = "Nominations Committee",
-    intro_via: Optional[str] = None,
+    intro_via: str | None = None,
 ) -> Draft:
     """Draft an outreach email to a nominations committee or search firm."""
     prompt = (

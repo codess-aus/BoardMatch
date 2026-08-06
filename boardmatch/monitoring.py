@@ -13,8 +13,6 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Structured logging
@@ -91,12 +89,23 @@ class MetricsCollector:
     prevent accidental PII leakage through metric dimensions.
     """
 
-    _BLOCKED_LABELS = frozenset({"email", "user_email", "phone", "ssn", "password", "token"})
+    _BLOCKED_LABELS = frozenset(
+        {"email", "user_email", "phone", "ssn", "password", "token"}
+    )
 
-    _ALLOWED_LABELS = frozenset({
-        "method", "path", "status_code", "source_key", "error_type",
-        "endpoint", "service", "environment", "version",
-    })
+    _ALLOWED_LABELS = frozenset(
+        {
+            "method",
+            "path",
+            "status_code",
+            "source_key",
+            "error_type",
+            "endpoint",
+            "service",
+            "environment",
+            "version",
+        }
+    )
 
     def __init__(self) -> None:
         self._counters: dict[str, float] = defaultdict(float)
@@ -120,21 +129,27 @@ class MetricsCollector:
         parts = [name] + [f"{k}={v}" for k, v in sorted(labels.items())]
         return "|".join(parts)
 
-    def increment(self, name: str, value: float = 1.0, labels: dict[str, str] | None = None) -> None:
+    def increment(
+        self, name: str, value: float = 1.0, labels: dict[str, str] | None = None
+    ) -> None:
         """Increment a counter metric."""
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
         self._counters[key] += value
         self._samples.append(MetricSample(name=name, value=value, labels=safe_labels))
 
-    def observe(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
+    def observe(
+        self, name: str, value: float, labels: dict[str, str] | None = None
+    ) -> None:
         """Record a histogram observation (e.g., request duration)."""
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
         self._histograms[key].append(value)
         self._samples.append(MetricSample(name=name, value=value, labels=safe_labels))
 
-    def set_gauge(self, name: str, value: float, labels: dict[str, str] | None = None) -> None:
+    def set_gauge(
+        self, name: str, value: float, labels: dict[str, str] | None = None
+    ) -> None:
         """Set a gauge to a specific value."""
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
@@ -147,7 +162,9 @@ class MetricsCollector:
         key = self._label_key(name, safe_labels)
         return self._counters.get(key, 0.0)
 
-    def get_histogram(self, name: str, labels: dict[str, str] | None = None) -> list[float]:
+    def get_histogram(
+        self, name: str, labels: dict[str, str] | None = None
+    ) -> list[float]:
         """Retrieve histogram observations."""
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
@@ -295,7 +312,9 @@ def evaluate_alerts(collector: MetricsCollector | None = None) -> list[AlertEval
     for rule in ALERT_RULES:
         status = rule.evaluate(collector)
         current_value = collector.get_counter(rule.metric_name, rule.labels)
-        results.append(AlertEvaluation(rule=rule, status=status, current_value=current_value))
+        results.append(
+            AlertEvaluation(rule=rule, status=status, current_value=current_value)
+        )
     return results
 
 
@@ -304,13 +323,17 @@ def evaluate_alerts(collector: MetricsCollector | None = None) -> list[AlertEval
 # ---------------------------------------------------------------------------
 
 
-def record_request_duration(method: str, path: str, status_code: int, duration_ms: float) -> None:
+def record_request_duration(
+    method: str, path: str, status_code: int, duration_ms: float
+) -> None:
     """Record HTTP request duration metric with safe labels."""
     labels = {"method": method, "path": path, "status_code": str(status_code)}
     metrics.observe(HTTP_REQUEST_DURATION, duration_ms, labels)
 
     if status_code >= 400:
-        metrics.increment(HTTP_ERROR_COUNT, labels={"status_code": str(status_code), "method": method})
+        metrics.increment(
+            HTTP_ERROR_COUNT, labels={"status_code": str(status_code), "method": method}
+        )
 
 
 def record_database_latency(duration_ms: float) -> None:

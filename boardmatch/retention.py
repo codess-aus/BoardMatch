@@ -190,15 +190,13 @@ class InMemoryNetworkRepository:
 
     def list_by_user(self, user_id: str) -> list[dict]:
         return [
-            conn for conn in self._connections.values()
-            if conn["user_id"] == user_id
+            conn for conn in self._connections.values() if conn["user_id"] == user_id
         ]
 
     def delete_all_for_user(self, user_id: str) -> int:
         """Delete all network data for a user. Returns count of deleted records."""
         to_delete = [
-            cid for cid, conn in self._connections.items()
-            if conn["user_id"] == user_id
+            cid for cid, conn in self._connections.items() if conn["user_id"] == user_id
         ]
         for cid in to_delete:
             del self._connections[cid]

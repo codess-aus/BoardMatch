@@ -3,22 +3,18 @@
 from __future__ import annotations
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from boardmatch.api.v1.admin import (
-    IngestionRunResponse,
-    SyncResponse,
     _SOURCE_REGISTRY,
     _active_sources,
     _runs,
-    require_admin,
     reset_state,
     router,
 )
 from boardmatch.auth import CurrentUser, get_current_user
 from boardmatch.config import AppEnvironment, Settings, get_settings
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -247,7 +243,6 @@ class TestStatusTracking:
 
     def test_failed_run_has_error(self, admin_client: TestClient):
         """A failed run records error details."""
-        from boardmatch.ingestion.base import SourceError
         from boardmatch.ingestion.json_source import JsonFileSource
 
         # Register a source that will fail

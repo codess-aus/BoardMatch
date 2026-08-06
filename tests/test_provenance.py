@@ -4,13 +4,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 
-import pytest
-
 from boardmatch.models import Opportunity, Remuneration
 from boardmatch.provenance import (
     STALE_THRESHOLD_DAYS,
     OpportunityStatus,
-    ProvenanceInfo,
     RemunerationConfidence,
     build_provenance,
     compute_remuneration_confidence,
@@ -290,7 +287,7 @@ class TestApiProvenanceIntegration:
 
     def test_opportunity_response_includes_provenance(self):
         """Verify the API schema includes the provenance field."""
-        from boardmatch.api.v1.schemas import OpportunityResponse, ProvenanceResponse
+        from boardmatch.api.v1.schemas import OpportunityResponse
 
         # Verify model schema has provenance
         fields = OpportunityResponse.model_fields

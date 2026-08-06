@@ -144,17 +144,27 @@ class TestCreateEvent:
 class TestListEvents:
     def test_empty_events(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.get(
-            f"/api/v1/applications/{app_id}/events", headers=_headers()
-        )
+        resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers())
         assert resp.status_code == 200
         assert resp.json() == {"events": []}
 
     def test_list_events_chronological(self, client: TestClient):
         app_id = _create_app(client)
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "outreach_sent"}, headers=_headers())
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers())
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "interviewing"}, headers=_headers())
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "outreach_sent"},
+            headers=_headers(),
+        )
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers(),
+        )
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "interviewing"},
+            headers=_headers(),
+        )
         resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers())
         assert resp.status_code == 200
         events = resp.json()["events"]
@@ -175,7 +185,11 @@ class TestListEvents:
 class TestAutoEventOnPatch:
     def test_patch_creates_event(self, client: TestClient):
         app_id = _create_app(client)
-        client.patch(f"/api/v1/applications/{app_id}", json={"stage": "applied"}, headers=_headers())
+        client.patch(
+            f"/api/v1/applications/{app_id}",
+            json={"stage": "applied"},
+            headers=_headers(),
+        )
         resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers())
         events = resp.json()["events"]
         assert len(events) == 1
@@ -184,19 +198,31 @@ class TestAutoEventOnPatch:
 
     def test_patch_notes_only_no_event(self, client: TestClient):
         app_id = _create_app(client)
-        client.patch(f"/api/v1/applications/{app_id}", json={"notes": "Updated"}, headers=_headers())
+        client.patch(
+            f"/api/v1/applications/{app_id}",
+            json={"notes": "Updated"},
+            headers=_headers(),
+        )
         resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers())
         assert resp.json()["events"] == []
 
     def test_patch_same_stage_no_event(self, client: TestClient):
         app_id = _create_app(client)
-        client.patch(f"/api/v1/applications/{app_id}", json={"stage": "researching"}, headers=_headers())
+        client.patch(
+            f"/api/v1/applications/{app_id}",
+            json={"stage": "researching"},
+            headers=_headers(),
+        )
         resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers())
         assert resp.json()["events"] == []
 
     def test_patch_invalid_transition_rejected(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.patch(f"/api/v1/applications/{app_id}", json={"stage": "offered"}, headers=_headers())
+        resp = client.patch(
+            f"/api/v1/applications/{app_id}",
+            json={"stage": "offered"},
+            headers=_headers(),
+        )
         assert resp.status_code == 422
         assert "Invalid transition" in resp.json()["message"]
 
@@ -204,66 +230,134 @@ class TestAutoEventOnPatch:
 class TestStageTransitionMap:
     def test_researching_to_outreach_sent(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "outreach_sent"}, headers=_headers())
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "outreach_sent"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
     def test_researching_to_applied(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers())
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
     def test_researching_to_closed(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "closed"}, headers=_headers())
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "closed"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
     def test_researching_to_interviewing_invalid(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "interviewing"}, headers=_headers())
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "interviewing"},
+            headers=_headers(),
+        )
         assert resp.status_code == 422
 
     def test_applied_to_interviewing(self, client: TestClient):
         app_id = _create_app(client)
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers())
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "interviewing"}, headers=_headers())
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers(),
+        )
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "interviewing"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
     def test_interviewing_to_offered(self, client: TestClient):
         app_id = _create_app(client)
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers())
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "interviewing"}, headers=_headers())
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "offered"}, headers=_headers())
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers(),
+        )
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "interviewing"},
+            headers=_headers(),
+        )
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "offered"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
     def test_offered_to_closed(self, client: TestClient):
         app_id = _create_app(client)
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers())
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "interviewing"}, headers=_headers())
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "offered"}, headers=_headers())
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "closed"}, headers=_headers())
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers(),
+        )
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "interviewing"},
+            headers=_headers(),
+        )
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "offered"},
+            headers=_headers(),
+        )
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "closed"},
+            headers=_headers(),
+        )
         assert resp.status_code == 201
 
 
 class TestUserIsolationEvents:
     def test_cannot_see_other_users_events(self, client: TestClient):
         app_id = _create_app(client, "user-a")
-        client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers("user-a"))
-        resp = client.get(f"/api/v1/applications/{app_id}/events", headers=_headers("user-b"))
+        client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers("user-a"),
+        )
+        resp = client.get(
+            f"/api/v1/applications/{app_id}/events", headers=_headers("user-b")
+        )
         assert resp.status_code == 404
 
     def test_cannot_create_events_on_other_users_app(self, client: TestClient):
         app_id = _create_app(client, "user-a")
-        resp = client.post(f"/api/v1/applications/{app_id}/events", json={"new_stage": "applied"}, headers=_headers("user-b"))
+        resp = client.post(
+            f"/api/v1/applications/{app_id}/events",
+            json={"new_stage": "applied"},
+            headers=_headers("user-b"),
+        )
         assert resp.status_code == 404
 
 
 class TestEventImmutability:
     def test_no_patch_on_events(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.patch(f"/api/v1/applications/{app_id}/events", json={"notes": "changed"}, headers=_headers())
+        resp = client.patch(
+            f"/api/v1/applications/{app_id}/events",
+            json={"notes": "changed"},
+            headers=_headers(),
+        )
         assert resp.status_code == 405
 
     def test_no_delete_on_events(self, client: TestClient):
         app_id = _create_app(client)
-        resp = client.delete(f"/api/v1/applications/{app_id}/events", headers=_headers())
+        resp = client.delete(
+            f"/api/v1/applications/{app_id}/events", headers=_headers()
+        )
         assert resp.status_code == 405

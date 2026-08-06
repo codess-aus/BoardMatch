@@ -19,6 +19,8 @@ from boardmatch.infrastructure.repositories.memory import (
     InMemoryOpportunityRepository,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> int:
     """Run the demo data import and print a summary."""
@@ -32,7 +34,7 @@ def main() -> int:
     try:
         result = import_demo_data(opportunity_repo, candidate_repo, settings)
     except ProductionImportError as exc:
-        logging.error(str(exc))
+        logger.error(str(exc))
         return 1
 
     print(

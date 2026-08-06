@@ -94,9 +94,7 @@ def candidate_from_cv_text(name: str, cv_text: str) -> Candidate:
         if line.strip().startswith(("-", "•")) and len(line.strip()) > 12
     ][:5]
 
-    headline = next(
-        (line.strip() for line in cv_text.splitlines() if line.strip()), ""
-    )
+    headline = next((line.strip() for line in cv_text.splitlines() if line.strip()), "")
 
     return Candidate(
         name=name,

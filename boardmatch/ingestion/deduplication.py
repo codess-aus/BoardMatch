@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from boardmatch.models import Opportunity
 
@@ -160,9 +159,7 @@ def merge_duplicates(group: DuplicateGroup) -> Opportunity:
             desirable_skills=record.desirable_skills,
         )
 
-    sorted_records = sorted(
-        group.source_records, key=_completeness_score, reverse=True
-    )
+    sorted_records = sorted(group.source_records, key=_completeness_score, reverse=True)
     base = sorted_records[0]
 
     all_sources = sorted({r.source for r in group.source_records})

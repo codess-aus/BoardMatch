@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -14,7 +12,6 @@ from ...ingestion.deduplication import (
     find_duplicates,
     merge_duplicates,
 )
-from ...models import Opportunity
 
 router = APIRouter(prefix="/admin/duplicates", tags=["admin", "deduplication"])
 
@@ -90,7 +87,7 @@ def _refresh_duplicates() -> None:
 
 @router.get("", response_model=DuplicateGroupListResponse)
 def list_duplicates(
-    status: Optional[str] = None,
+    status: str | None = None,
 ) -> DuplicateGroupListResponse:
     """List potential duplicate groups, optionally filtered by status."""
     _refresh_duplicates()

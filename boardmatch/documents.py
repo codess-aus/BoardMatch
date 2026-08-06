@@ -80,9 +80,7 @@ class InMemoryDocumentRepository:
         return self._store.get(document_id)
 
     def list_by_user(self, user_id: str) -> list[Document]:
-        return [
-            doc for doc in self._store.values() if doc.user_id == user_id
-        ]
+        return [doc for doc in self._store.values() if doc.user_id == user_id]
 
     def delete(self, document_id: str) -> bool:
         if document_id in self._store:

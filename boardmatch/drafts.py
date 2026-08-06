@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 @dataclass(frozen=True)
@@ -21,10 +21,10 @@ class Draft:
     draft_type: str  # board_cv | director_bio | outreach
     content: str
     engine: str  # template | azure_openai
-    model_name: Optional[str] = None
+    model_name: str | None = None
     prompt_version: str = "1.0"
     profile_version: int = 1
-    opportunity_id: Optional[str] = None
+    opportunity_id: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -35,7 +35,7 @@ class DraftRepository(Protocol):
         """Persist a new draft and return it."""
         ...
 
-    def get_by_id(self, draft_id: str, user_id: str) -> Optional[Draft]:
+    def get_by_id(self, draft_id: str, user_id: str) -> Draft | None:
         """Return a draft by ID, scoped to the owning user."""
         ...
 
@@ -58,7 +58,7 @@ class InMemoryDraftRepository:
         self._store[draft.id] = draft
         return draft
 
-    def get_by_id(self, draft_id: str, user_id: str) -> Optional[Draft]:
+    def get_by_id(self, draft_id: str, user_id: str) -> Draft | None:
         draft = self._store.get(draft_id)
         if draft and draft.user_id == user_id:
             return draft

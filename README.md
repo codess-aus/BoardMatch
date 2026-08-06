@@ -91,6 +91,9 @@ For a simple local run, the defaults are enough. The most commonly changed value
 | `EXTRACTED_TEXT_RETENTION_DAYS` | `90` | Extracted CV text retention period |
 | `AUDIT_LOG_RETENTION_DAYS` | `90` | Audit log retention period |
 | `STORAGE_ENCRYPTION_REQUIRED` | `true` | Requires Azure Storage configuration in production |
+| `KEY_VAULT_URL` | empty | When set, secrets (currently `AZURE_OPENAI_API_KEY`) are loaded from Azure Key Vault via `DefaultAzureCredential`, falling back to the plain environment variable if a secret is not found |
+| `CORS_ALLOWED_ORIGINS` | empty | Comma-separated list of allowed CORS origins; empty disables cross-origin requests |
+| `RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS` | `30` / `60` | In-process rate limit applied to sensitive routes (coaching/AI generation, document upload) |
 
 ### 3. Run the command-line demo
 
@@ -217,6 +220,8 @@ ruff check .
 ruff format --check .
 ```
 
+CI additionally runs `pip-audit` (dependency vulnerability scanning), a `gitleaks` secret scan, and a scheduled CodeQL analysis (`.github/workflows/codeql.yml`) as blocking/advisory security gates.
+
 ### 8. Optional: run with Docker Compose
 
 ```bash
@@ -299,6 +304,7 @@ For exact request and response schemas, use the generated OpenAPI docs at `/docs
 - **Azure AI Document Intelligence** — set `AZURE_DOC_INTELLIGENCE_ENDPOINT` (and `AZURE_DOC_INTELLIGENCE_KEY`, or rely on managed identity if omitted) to OCR uploaded CVs/documents via the prebuilt-read model before mapping the recognized text onto profile fields. A circuit breaker falls back to the deterministic template extractor after repeated failures (and immediately when not configured), so document processing never crashes because of a Document Intelligence outage. **To activate**: provision an Azure AI Document Intelligence (Form Recognizer) resource and supply its endpoint/key, or grant the app's managed identity the `Cognitive Services User` role.
 - **Microsoft Entra ID** — bearer-token authentication is available when `AUTH_ISSUER` and `AUTH_AUDIENCE` are configured.
 - **Microsoft Graph** — set `MS_GRAPH_CLIENT_ID` and `MS_GRAPH_CLIENT_SECRET` (plus `MS_GRAPH_TENANT_ID` and `MS_GRAPH_REDIRECT_URI` as needed) to perform a real OAuth authorization-code exchange against Microsoft identity platform on consent, and a real `GET /me/people` call against Microsoft Graph on network sync. Without these, the consent flow and sync use deterministic simulated/fixture data so local development and tests stay fully offline. Real access tokens are held only in memory for the life of the process (never persisted in the current in-memory store) and are cleared on revocation; only a one-way hash is retained for audit. **To activate**: register an Entra ID app with `User.Read`, `Calendars.Read`, `Mail.Read`, and `People.Read` delegated permissions, add a client secret, and set the redirect URI to match your deployment.
+- **Azure Key Vault** — set `KEY_VAULT_URL` to load production secrets (currently `AZURE_OPENAI_API_KEY`) via `DefaultAzureCredential` instead of plain environment variables; unset secrets fall back to the environment automatically so local/test usage is unaffected.
 - **Power BI / Fabric** — readiness and monitoring responses provide data that can be adapted into dashboards.
 - **Copilot Studio** — the REST API can be used as the tool surface for a conversational front end.
 
@@ -321,6 +327,10 @@ BoardMatch handles personal data responsibly. Current controls include:
 | **Right to erasure** | `DELETE /api/v1/privacy/all-data` removes available user documents, extracted text, network records, and active integration tokens from the current repositories. |
 | **Log redaction** | Privacy-sensitive fields are redacted by utilities such as `redact_sensitive_data` in `boardmatch/retention.py` and `redact_pii` in `boardmatch/monitoring.py`. |
 | **Storage encryption validation** | Production settings require `AZURE_STORAGE_ACCOUNT` when storage encryption is enforced. |
+| **Secrets management** | Production secrets can be sourced from Azure Key Vault (`KEY_VAULT_URL`) instead of plain environment variables. |
+| **CORS** | Cross-origin requests are disabled by default; configure `CORS_ALLOWED_ORIGINS` to allow specific origins. |
+| **Security headers** | Responses include `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and (in production) `Strict-Transport-Security`. |
+| **Rate limiting** | Sensitive routes (coaching/AI generation, document upload) are rate-limited in-process; limits are configurable via `RATE_LIMIT_MAX_REQUESTS`/`RATE_LIMIT_WINDOW_SECONDS`. |
 
 ## Data note
 

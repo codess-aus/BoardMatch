@@ -24,14 +24,16 @@ def _make_opportunity(
     **kwargs,
 ) -> Opportunity:
     """Helper to create test opportunities with sensible defaults."""
-    defaults = dict(
-        sector="Technology",
-        location="Sydney",
-        url="https://example.com/opp",
-        remuneration=Remuneration.PAID,
-    )
+    defaults = {
+        "sector": "Technology",
+        "location": "Sydney",
+        "url": "https://example.com/opp",
+        "remuneration": Remuneration.PAID,
+    }
     defaults.update(kwargs)
-    return Opportunity(id=id, title=title, organisation=organisation, source=source, **defaults)
+    return Opportunity(
+        id=id, title=title, organisation=organisation, source=source, **defaults
+    )
 
 
 class TestNormaliseOrgName:
@@ -57,7 +59,9 @@ class TestNormaliseOrgName:
         assert normalise_org_name("Acme Pty") == "acme proprietary"
 
     def test_removes_punctuation(self):
-        assert normalise_org_name("Acme (Australia) Limited") == "acme australia limited"
+        assert (
+            normalise_org_name("Acme (Australia) Limited") == "acme australia limited"
+        )
 
     def test_collapses_whitespace(self):
         assert normalise_org_name("Acme   Limited") == "acme limited"
@@ -127,9 +131,13 @@ class TestFindDuplicates:
     def test_multiple_duplicate_groups(self):
         opps = [
             _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd"),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Limited"),
+            _make_opportunity(
+                id="2", title="Board Member", organisation="Acme Limited"
+            ),
             _make_opportunity(id="3", title="Director", organisation="Beta Corp"),
-            _make_opportunity(id="4", title="Director", organisation="Beta Corporation"),
+            _make_opportunity(
+                id="4", title="Director", organisation="Beta Corporation"
+            ),
         ]
         groups = find_duplicates(opps)
         assert len(groups) == 2
@@ -154,16 +162,24 @@ class TestFindDuplicates:
 
     def test_cross_source_higher_confidence(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", source="source_a"),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", source="source_b"),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", source="source_a"
+            ),
+            _make_opportunity(
+                id="2", title="Board Member", organisation="Acme Ltd", source="source_b"
+            ),
         ]
         groups = find_duplicates(opps)
         assert groups[0].confidence == 1.0
 
     def test_same_source_lower_confidence(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", source="source_a"),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", source="source_a"),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", source="source_a"
+            ),
+            _make_opportunity(
+                id="2", title="Board Member", organisation="Acme Ltd", source="source_a"
+            ),
         ]
         groups = find_duplicates(opps)
         assert groups[0].confidence == 0.9
@@ -180,8 +196,15 @@ class TestFindDuplicates:
 class TestMergeDuplicates:
     def test_merge_picks_most_complete_record(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", summary=""),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", summary="A detailed summary of the role."),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", summary=""
+            ),
+            _make_opportunity(
+                id="2",
+                title="Board Member",
+                organisation="Acme Ltd",
+                summary="A detailed summary of the role.",
+            ),
         ]
         groups = find_duplicates(opps)
         merged = merge_duplicates(groups[0])
@@ -198,8 +221,12 @@ class TestMergeDuplicates:
 
     def test_merge_combines_sources(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", source="source_a"),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", source="source_b"),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", source="source_a"
+            ),
+            _make_opportunity(
+                id="2", title="Board Member", organisation="Acme Ltd", source="source_b"
+            ),
         ]
         groups = find_duplicates(opps)
         merged = merge_duplicates(groups[0])
@@ -208,8 +235,18 @@ class TestMergeDuplicates:
 
     def test_merge_unions_skills(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", required_skills=("governance", "finance")),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", required_skills=("governance", "strategy")),
+            _make_opportunity(
+                id="1",
+                title="Board Member",
+                organisation="Acme Ltd",
+                required_skills=("governance", "finance"),
+            ),
+            _make_opportunity(
+                id="2",
+                title="Board Member",
+                organisation="Acme Ltd",
+                required_skills=("governance", "strategy"),
+            ),
         ]
         groups = find_duplicates(opps)
         merged = merge_duplicates(groups[0])
@@ -217,8 +254,15 @@ class TestMergeDuplicates:
 
     def test_merge_fills_missing_fields(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", closes_on=None),
-            _make_opportunity(id="1b", title="Board Member", organisation="Acme Ltd", closes_on="2024-06-30"),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", closes_on=None
+            ),
+            _make_opportunity(
+                id="1b",
+                title="Board Member",
+                organisation="Acme Ltd",
+                closes_on="2024-06-30",
+            ),
         ]
         groups = find_duplicates(opps)
         merged = merge_duplicates(groups[0])
@@ -248,8 +292,16 @@ class TestMergeDuplicates:
 
     def test_merge_is_deterministic(self):
         opps = [
-            _make_opportunity(id="1", title="Board Member", organisation="Acme Ltd", source="a"),
-            _make_opportunity(id="2", title="Board Member", organisation="Acme Ltd", source="b", summary="Details"),
+            _make_opportunity(
+                id="1", title="Board Member", organisation="Acme Ltd", source="a"
+            ),
+            _make_opportunity(
+                id="2",
+                title="Board Member",
+                organisation="Acme Ltd",
+                source="b",
+                summary="Details",
+            ),
         ]
         groups1 = find_duplicates(opps)
         groups2 = find_duplicates(opps)
@@ -280,6 +332,7 @@ class TestDeduplicationAPI:
     @pytest.fixture
     def client(self):
         from boardmatch.api import app
+
         return TestClient(app)
 
     def test_list_duplicates_endpoint(self, client):
@@ -309,16 +362,24 @@ class TestDeduplicationAPI:
 
 class TestProvenanceRetention:
     def test_source_records_unchanged_after_find(self):
-        opp1 = _make_opportunity(id="orig-1", title="Board Member", organisation="Acme Ltd")
-        opp2 = _make_opportunity(id="orig-2", title="Board Member", organisation="Acme Ltd")
+        opp1 = _make_opportunity(
+            id="orig-1", title="Board Member", organisation="Acme Ltd"
+        )
+        opp2 = _make_opportunity(
+            id="orig-2", title="Board Member", organisation="Acme Ltd"
+        )
         opps = [opp1, opp2]
         find_duplicates(opps)
         assert opps[0].id == "orig-1"
         assert opps[1].id == "orig-2"
 
     def test_source_records_available_in_group(self):
-        opp1 = _make_opportunity(id="orig-1", title="Board Member", organisation="Acme Ltd")
-        opp2 = _make_opportunity(id="orig-2", title="Board Member", organisation="Acme Ltd")
+        opp1 = _make_opportunity(
+            id="orig-1", title="Board Member", organisation="Acme Ltd"
+        )
+        opp2 = _make_opportunity(
+            id="orig-2", title="Board Member", organisation="Acme Ltd"
+        )
         groups = find_duplicates([opp1, opp2])
         ids = {r.id for r in groups[0].source_records}
         assert ids == {"orig-1", "orig-2"}

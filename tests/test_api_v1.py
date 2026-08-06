@@ -9,8 +9,8 @@ from boardmatch.api import app
 from boardmatch.api.v1.schemas import (
     ApplicationListResponse,
     CoachingBoardCvResponse,
-    PaginatedOpportunityResponse,
     OpportunityResponse,
+    PaginatedOpportunityResponse,
     ReadinessResponse,
 )
 
@@ -64,10 +64,22 @@ class TestV1Opportunities:
         resp = client.get("/api/v1/opportunities/gov-001", headers=AUTH_HEADER)
         body = resp.json()
         required_fields = {
-            "id", "title", "organisation", "sector", "location",
-            "source", "remuneration", "fee_display", "summary",
-            "required_skills", "score", "band", "matched_skills",
-            "missing_required", "missing_desirable", "rationale",
+            "id",
+            "title",
+            "organisation",
+            "sector",
+            "location",
+            "source",
+            "remuneration",
+            "fee_display",
+            "summary",
+            "required_skills",
+            "score",
+            "band",
+            "matched_skills",
+            "missing_required",
+            "missing_desirable",
+            "rationale",
             "gap_actions",
         }
         assert required_fields.issubset(body.keys())

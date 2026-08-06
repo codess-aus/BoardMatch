@@ -27,8 +27,12 @@ def main(argv: list[str] | None = None) -> int:
 
     for fit in fits:
         opportunity = fit.opportunity
-        print(f"[{fit.score:>3}] {fit.band:<14} {opportunity.title} — {opportunity.organisation}")
-        print(f"      {opportunity.fee_display} · {opportunity.location} · {opportunity.source}")
+        print(
+            f"[{fit.score:>3}] {fit.band:<14} {opportunity.title} — {opportunity.organisation}"
+        )
+        print(
+            f"      {opportunity.fee_display} · {opportunity.location} · {opportunity.source}"
+        )
         if fit.gap_actions:
             print(f"      Gap: {fit.gap_actions[0]}")
         path = network.best_path(candidate, opportunity)
@@ -53,7 +57,9 @@ def main(argv: list[str] | None = None) -> int:
 
     snapshot = tracker.snapshot(fits)
     print("--- Readiness ---------------------------------------------------")
-    print(f"Board-readiness score: {snapshot['readiness_score']}/100 {snapshot['components']}")
+    print(
+        f"Board-readiness score: {snapshot['readiness_score']}/100 {snapshot['components']}"
+    )
     for action in snapshot["next_actions"]:
         print(f" - {action}")
     return 0

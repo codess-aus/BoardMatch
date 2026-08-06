@@ -85,12 +85,26 @@ REVIEW_THRESHOLD = 0.7
 MAX_RETRY_ATTEMPTS = 3
 
 KNOWN_SKILLS = (
-    "governance", "finance", "risk management", "cyber security", "esg",
-    "audit committee", "remuneration", "digital transformation",
-    "regulatory compliance", "stakeholder engagement", "public policy",
-    "people strategy", "capital raising", "fundraising", "strategy",
-    "leadership", "project management", "change management",
-    "data analytics", "marketing",
+    "governance",
+    "finance",
+    "risk management",
+    "cyber security",
+    "esg",
+    "audit committee",
+    "remuneration",
+    "digital transformation",
+    "regulatory compliance",
+    "stakeholder engagement",
+    "public policy",
+    "people strategy",
+    "capital raising",
+    "fundraising",
+    "strategy",
+    "leadership",
+    "project management",
+    "change management",
+    "data analytics",
+    "marketing",
 )
 
 KNOWN_CREDENTIALS = (
@@ -126,28 +140,40 @@ class TemplateExtractionProvider:
         found_skills = [skill for skill in KNOWN_SKILLS if skill in lowered]
         if found_skills:
             confidence = min(0.9, 0.5 + len(found_skills) * 0.05)
-            fields.append(ExtractedField(
-                field_name="skills", value=found_skills,
-                confidence=confidence, needs_review=confidence < REVIEW_THRESHOLD,
-            ))
+            fields.append(
+                ExtractedField(
+                    field_name="skills",
+                    value=found_skills,
+                    confidence=confidence,
+                    needs_review=confidence < REVIEW_THRESHOLD,
+                )
+            )
 
         match = re.search(r"(\d{1,2})\+?\s*years", lowered)
         if match:
             years = int(match.group(1))
             confidence = 0.8 if years <= 40 else 0.4
-            fields.append(ExtractedField(
-                field_name="years_experience", value=years,
-                confidence=confidence, needs_review=confidence < REVIEW_THRESHOLD,
-            ))
+            fields.append(
+                ExtractedField(
+                    field_name="years_experience",
+                    value=years,
+                    confidence=confidence,
+                    needs_review=confidence < REVIEW_THRESHOLD,
+                )
+            )
 
         found_credentials = [
             cred for cred, needle in KNOWN_CREDENTIALS if needle in lowered
         ]
         if found_credentials:
-            fields.append(ExtractedField(
-                field_name="credentials", value=found_credentials,
-                confidence=0.85, needs_review=False,
-            ))
+            fields.append(
+                ExtractedField(
+                    field_name="credentials",
+                    value=found_credentials,
+                    confidence=0.85,
+                    needs_review=False,
+                )
+            )
 
         lines = [line.strip() for line in document_content.splitlines() if line.strip()]
         if lines:
@@ -157,36 +183,58 @@ class TemplateExtractionProvider:
                 confidence = 0.75
             else:
                 confidence = 0.4
-            fields.append(ExtractedField(
-                field_name="name", value=name_candidate[:100],
-                confidence=confidence, needs_review=confidence < REVIEW_THRESHOLD,
-            ))
+            fields.append(
+                ExtractedField(
+                    field_name="name",
+                    value=name_candidate[:100],
+                    confidence=confidence,
+                    needs_review=confidence < REVIEW_THRESHOLD,
+                )
+            )
 
         headline_match = re.search(
             r"(senior|chief|director|manager|head of|vp|executive|ceo|cfo|cto|coo)[^\n]*",
             lowered,
         )
         if headline_match:
-            headline = document_content[headline_match.start():headline_match.end()].strip()
-            fields.append(ExtractedField(
-                field_name="headline", value=headline[:140],
-                confidence=0.65, needs_review=True,
-            ))
+            headline = document_content[
+                headline_match.start() : headline_match.end()
+            ].strip()
+            fields.append(
+                ExtractedField(
+                    field_name="headline",
+                    value=headline[:140],
+                    confidence=0.65,
+                    needs_review=True,
+                )
+            )
 
         sector_keywords = {
-            "healthcare": "healthcare", "health": "healthcare",
-            "financial services": "financial services", "banking": "financial services",
-            "technology": "technology", "education": "education",
-            "government": "government", "not-for-profit": "not-for-profit",
-            "nfp": "not-for-profit", "energy": "energy",
-            "mining": "mining", "retail": "retail",
+            "healthcare": "healthcare",
+            "health": "healthcare",
+            "financial services": "financial services",
+            "banking": "financial services",
+            "technology": "technology",
+            "education": "education",
+            "government": "government",
+            "not-for-profit": "not-for-profit",
+            "nfp": "not-for-profit",
+            "energy": "energy",
+            "mining": "mining",
+            "retail": "retail",
         }
-        found_sectors = list({sector_keywords[k] for k in sector_keywords if k in lowered})
+        found_sectors = list(
+            {sector_keywords[k] for k in sector_keywords if k in lowered}
+        )
         if found_sectors:
-            fields.append(ExtractedField(
-                field_name="sectors", value=found_sectors,
-                confidence=0.6, needs_review=True,
-            ))
+            fields.append(
+                ExtractedField(
+                    field_name="sectors",
+                    value=found_sectors,
+                    confidence=0.6,
+                    needs_review=True,
+                )
+            )
 
         return fields
 
@@ -246,7 +294,9 @@ class AzureDocumentIntelligenceProvider:
         self._consecutive_failures += 1
         logger.warning(
             "Azure Document Intelligence call failed (%s/%s consecutive): %s",
-            self._consecutive_failures, self._failure_threshold, exc,
+            self._consecutive_failures,
+            self._failure_threshold,
+            exc,
         )
         if self._consecutive_failures >= self._failure_threshold:
             self._circuit_open_until = datetime.now(timezone.utc) + self._reset_after
@@ -280,7 +330,9 @@ class AzureDocumentIntelligenceProvider:
 
             credential = DefaultAzureCredential()
 
-        client = DocumentIntelligenceClient(endpoint=self.endpoint, credential=credential)
+        client = DocumentIntelligenceClient(
+            endpoint=self.endpoint, credential=credential
+        )
         poller = client.begin_analyze_document(
             "prebuilt-read",
             AnalyzeDocumentRequest(bytes_source=document_content.encode("utf-8")),
@@ -387,7 +439,7 @@ class DocumentProcessor:
             result.extracted_fields = extracted
             result.transition_to(ProcessingStatus.COMPLETED)
             result.error = None
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any extraction failure marks the doc failed
             result.transition_to(ProcessingStatus.FAILED)
             result.error = str(exc)
 

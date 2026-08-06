@@ -81,9 +81,7 @@ class InMemoryIntegrationRepository:
         self._audit_events: list[AuditEvent] = []
 
     def list_by_user(self, user_id: str) -> list[Integration]:
-        return [
-            i for i in self._integrations.values() if i.user_id == user_id
-        ]
+        return [i for i in self._integrations.values() if i.user_id == user_id]
 
     def get(self, user_id: str, provider: str) -> Integration | None:
         return self._integrations.get((user_id, provider))
@@ -142,12 +140,16 @@ def exchange_code_for_token(
         payload = response.json()
         access_token = payload.get("access_token")
         if not access_token:
-            raise GraphTokenExchangeError("Token response did not include an access_token")
+            raise GraphTokenExchangeError(
+                "Token response did not include an access_token"
+            )
         return access_token
     except GraphTokenExchangeError:
         raise
     except Exception as exc:
-        raise GraphTokenExchangeError(f"Failed to exchange code for token: {exc}") from exc
+        raise GraphTokenExchangeError(
+            f"Failed to exchange code for token: {exc}"
+        ) from exc
 
 
 class GraphApiError(Exception):
@@ -157,7 +159,9 @@ class GraphApiError(Exception):
 _GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 
-def fetch_graph_people(access_token: str, *, top: int = 25, timeout: float = 10.0) -> list[dict]:
+def fetch_graph_people(
+    access_token: str, *, top: int = 25, timeout: float = 10.0
+) -> list[dict]:
     """Fetch the signed-in user's relevant people from Microsoft Graph.
 
     Calls ``GET /me/people``, which Graph ranks by relevance based on the

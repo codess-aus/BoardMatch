@@ -11,7 +11,6 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-from typing import Optional
 
 
 class AuditAction(StrEnum):
@@ -33,10 +32,10 @@ class AuditEvent:
     id: str
     user_id: str
     action: AuditAction
-    resource_type: Optional[str] = None
-    resource_id: Optional[str] = None
+    resource_type: str | None = None
+    resource_id: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    details: Optional[dict] = None
+    details: dict | None = None
 
 
 DEFAULT_RETENTION_DAYS = 90
@@ -53,9 +52,9 @@ class AuditLogger:
         self,
         user_id: str,
         action: AuditAction,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[dict] = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict | None = None,
     ) -> AuditEvent:
         """Record an audit event and return it."""
         event = AuditEvent(

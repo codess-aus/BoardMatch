@@ -209,7 +209,8 @@ def sync_connections(
         except GraphApiError as exc:
             logger.warning(
                 "Microsoft Graph /me/people call failed for user %s: %s",
-                user.user_id, exc,
+                user.user_id,
+                exc,
             )
 
     imported: list[NetworkConnection] = []
@@ -257,9 +258,7 @@ def update_connection(
     return _to_response(conn)
 
 
-@router.delete(
-    "/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/connections/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_connection(
     connection_id: str,
     user: CurrentUser = Depends(get_required_user),
@@ -297,9 +296,7 @@ def get_intro_paths(
             detail="Opportunity not found",
         )
 
-    approved_connections = [
-        c for c in repo.list_by_user(user.user_id) if c.approved
-    ]
+    approved_connections = [c for c in repo.list_by_user(user.user_id) if c.approved]
 
     domain_connections = [
         Connection(

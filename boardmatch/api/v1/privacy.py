@@ -9,16 +9,16 @@ from pydantic import BaseModel
 
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.config import get_settings
+from boardmatch.documents import InMemoryDocumentRepository
+from boardmatch.integrations import InMemoryIntegrationRepository
 from boardmatch.retention import (
     InMemoryExtractedTextRepository,
     InMemoryNetworkRepository,
     RetentionPolicy,
     RetentionService,
-    revoke_integration_token,
     delete_network_data,
+    revoke_integration_token,
 )
-from boardmatch.documents import InMemoryDocumentRepository
-from boardmatch.integrations import InMemoryIntegrationRepository
 from boardmatch.storage import LocalStorageBackend
 
 router = APIRouter(prefix="/privacy", tags=["privacy"])
@@ -101,9 +101,16 @@ def list_retention_policies(
     settings = get_settings()
     return RetentionPoliciesResponse(
         policies=[
-            RetentionPolicyResponse(category="documents", retention_days=settings.document_retention_days),
-            RetentionPolicyResponse(category="extracted_text", retention_days=settings.extracted_text_retention_days),
-            RetentionPolicyResponse(category="audit_logs", retention_days=settings.audit_log_retention_days),
+            RetentionPolicyResponse(
+                category="documents", retention_days=settings.document_retention_days
+            ),
+            RetentionPolicyResponse(
+                category="extracted_text",
+                retention_days=settings.extracted_text_retention_days,
+            ),
+            RetentionPolicyResponse(
+                category="audit_logs", retention_days=settings.audit_log_retention_days
+            ),
         ]
     )
 
@@ -198,7 +205,9 @@ def delete_all_user_data(
     tokens_revoked = 0
     integrations = integration_repo.list_by_user(user.user_id)
     for integration in integrations:
-        if revoke_integration_token(user.user_id, integration.provider, integration_repo):
+        if revoke_integration_token(
+            user.user_id, integration.provider, integration_repo
+        ):
             tokens_revoked += 1
 
     return DeletionRequestResponse(

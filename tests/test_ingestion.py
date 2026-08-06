@@ -21,7 +21,6 @@ from boardmatch.ingestion import (
 from boardmatch.ingestion.json_source import JsonFileSource, gov_vacancies_source
 from boardmatch.models import Opportunity, Remuneration
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

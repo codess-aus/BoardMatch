@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 
 class Remuneration(str, Enum):
@@ -28,8 +27,8 @@ class Opportunity:
     source: str
     url: str
     remuneration: Remuneration
-    fee_aud: Optional[int] = None
-    closes_on: Optional[str] = None
+    fee_aud: int | None = None
+    closes_on: str | None = None
     summary: str = ""
     required_skills: tuple[str, ...] = ()
     desirable_skills: tuple[str, ...] = ()
@@ -58,7 +57,7 @@ class Candidate:
     board_experience: list[str] = field(default_factory=list)
     achievements: list[str] = field(default_factory=list)
     locations: list[str] = field(default_factory=list)
-    connections: list["Connection"] = field(default_factory=list)
+    connections: list[Connection] = field(default_factory=list)
 
     def normalised_skills(self) -> set[str]:
         return {s.strip().lower() for s in self.skills if s.strip()}
@@ -164,7 +163,6 @@ class ApplicationEvent:
     notes: str = ""
 
 
-
 @dataclass
 class NetworkConnection:
     """A persisted network connection with approval and strength metadata."""
@@ -179,7 +177,6 @@ class NetworkConnection:
     strength: int = 5  # 1-10, user-adjustable
     source: str = "manual"
     deleted: bool = False
-
 
 
 @dataclass(frozen=True)

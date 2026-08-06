@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 
 from boardmatch.api import app
 from boardmatch.api.v1.applications import _application_repo, _opportunity_repo
-from boardmatch.api.v1.authorization import require_admin, require_active_user
+from boardmatch.api.v1.authorization import require_admin
 from boardmatch.api.v1.coaching import _draft_repo
-from boardmatch.auth import CurrentUser, get_current_user
+from boardmatch.auth import CurrentUser
 from boardmatch.drafts import Draft
 from boardmatch.models import Application, ApplicationStage, Opportunity, Remuneration
 from boardmatch.profile_api import (
@@ -105,7 +105,9 @@ def _seed_draft(user_id: str) -> str:
 
 class TestProfileOwnership:
     def test_user_accesses_own_profile(self):
-        resp = client.put("/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers(USER_A))
+        resp = client.put(
+            "/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers(USER_A)
+        )
         assert resp.status_code == 200
         resp = client.get("/api/v1/profile", headers=_headers(USER_A))
         assert resp.status_code == 200
@@ -147,12 +149,16 @@ class TestApplicationOwnership:
 class TestDraftOwnership:
     def test_user_accesses_own_draft(self):
         draft_id = _seed_draft(USER_A)
-        resp = client.get(f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_A))
+        resp = client.get(
+            f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_A)
+        )
         assert resp.status_code == 200
 
     def test_cross_user_draft_access_returns_404(self):
         draft_id = _seed_draft(USER_A)
-        resp = client.get(f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_B))
+        resp = client.get(
+            f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_B)
+        )
         assert resp.status_code == 404
 
     def test_cross_user_draft_list_isolated(self):
@@ -163,7 +169,9 @@ class TestDraftOwnership:
 
     def test_cross_user_draft_delete_fails(self):
         draft_id = _seed_draft(USER_A)
-        resp = client.delete(f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_B))
+        resp = client.delete(
+            f"/api/v1/coaching/drafts/{draft_id}", headers=_headers(USER_B)
+        )
         assert resp.status_code == 404
 
 
@@ -186,7 +194,9 @@ class TestAdminRoleEnforcement:
         assert "Admin access required" in resp.json()["detail"]
 
     def test_admin_can_access_admin_route(self, admin_app):
-        resp = admin_app.get("/admin/test", headers=_headers(ADMIN_USER, roles="user,admin"))
+        resp = admin_app.get(
+            "/admin/test", headers=_headers(ADMIN_USER, roles="user,admin")
+        )
         assert resp.status_code == 200
         assert resp.json()["user_id"] == ADMIN_USER
 
@@ -198,14 +208,20 @@ class TestAdminRoleEnforcement:
 class TestDisabledUserRejection:
     def test_disabled_user_cannot_access_profile(self):
         client.put("/api/v1/profile", json=SAMPLE_PROFILE, headers=_headers(USER_A))
-        resp = client.get("/api/v1/profile", headers=_headers(USER_A, roles="user,disabled"))
+        resp = client.get(
+            "/api/v1/profile", headers=_headers(USER_A, roles="user,disabled")
+        )
         assert resp.status_code == 403
         assert "disabled" in resp.json()["message"].lower()
 
     def test_disabled_user_cannot_access_applications(self):
-        resp = client.get("/api/v1/applications", headers=_headers(USER_A, roles="user,disabled"))
+        resp = client.get(
+            "/api/v1/applications", headers=_headers(USER_A, roles="user,disabled")
+        )
         assert resp.status_code == 403
 
     def test_disabled_user_cannot_access_drafts(self):
-        resp = client.get("/api/v1/coaching/drafts", headers=_headers(USER_A, roles="user,disabled"))
+        resp = client.get(
+            "/api/v1/coaching/drafts", headers=_headers(USER_A, roles="user,disabled")
+        )
         assert resp.status_code == 403

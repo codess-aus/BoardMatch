@@ -83,7 +83,9 @@ def score_opportunity(candidate: Candidate, opportunity: Opportunity) -> FitResu
         )
     if matched_desirable:
         rationale.append(
-            "Also brings desirable capability: " + ", ".join(sorted(matched_desirable)) + "."
+            "Also brings desirable capability: "
+            + ", ".join(sorted(matched_desirable))
+            + "."
         )
     if sector_match:
         rationale.append(f"Direct {opportunity.sector} sector experience.")

@@ -6,7 +6,7 @@ filter semantics and ordering guarantees (behavioral parity).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime, timezone
 
 from boardmatch.models import Opportunity
 
@@ -27,7 +27,7 @@ def apply_filters(
         rem = str(filters["remuneration"])
         results = [o for o in results if o.remuneration.value == rem]
 
-    if "paid_only" in filters and filters["paid_only"]:
+    if filters.get("paid_only"):
         results = [o for o in results if o.is_paid]
 
     if "min_fee" in filters:
@@ -51,7 +51,7 @@ def apply_filters(
         ]
 
     if "status" in filters and str(filters["status"]).lower() == "open":
-        today = date.today().isoformat()
+        today = datetime.now(timezone.utc).date().isoformat()
         results = [o for o in results if o.closes_on is None or o.closes_on >= today]
 
     return results

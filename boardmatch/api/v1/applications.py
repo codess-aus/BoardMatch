@@ -15,10 +15,10 @@ from boardmatch.infrastructure.repositories.memory import (
     InMemoryOpportunityRepository,
 )
 from boardmatch.models import (
+    VALID_STAGE_TRANSITIONS,
     Application,
     ApplicationEvent,
     ApplicationStage,
-    VALID_STAGE_TRANSITIONS,
 )
 
 from .authorization import require_active_user
@@ -206,9 +206,7 @@ def update_application(
     return _to_response(updated)
 
 
-@router.delete(
-    "/applications/{application_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/applications/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_application(
     application_id: str,
     user: CurrentUser = Depends(get_required_user),
@@ -293,6 +291,4 @@ def list_application_events(
             detail="Application not found",
         )
     events = repo.list_events(user.user_id, application_id)
-    return ApplicationEventListResponse(
-        events=[_to_event_response(e) for e in events]
-    )
+    return ApplicationEventListResponse(events=[_to_event_response(e) for e in events])

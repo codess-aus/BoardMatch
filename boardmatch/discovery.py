@@ -10,8 +10,8 @@ without changing downstream code.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Optional
 
 from .models import Opportunity, Remuneration
 
@@ -48,8 +48,8 @@ def discover(
     *,
     include_mocked: bool = True,
     paid_only: bool = False,
-    sector: Optional[str] = None,
-    min_fee_aud: Optional[int] = None,
+    sector: str | None = None,
+    min_fee_aud: int | None = None,
 ) -> list[Opportunity]:
     """Aggregate board vacancies across the configured sources."""
     opportunities: list[Opportunity] = load_source(PRIMARY_SOURCE)
@@ -70,8 +70,8 @@ def _filter(
     opportunities: Iterable[Opportunity],
     *,
     paid_only: bool,
-    sector: Optional[str],
-    min_fee_aud: Optional[int],
+    sector: str | None,
+    min_fee_aud: int | None,
 ) -> Iterable[Opportunity]:
     for opportunity in opportunities:
         if paid_only and not opportunity.is_paid:
@@ -83,7 +83,7 @@ def _filter(
         yield opportunity
 
 
-def get_opportunity(opportunity_id: str) -> Optional[Opportunity]:
+def get_opportunity(opportunity_id: str) -> Opportunity | None:
     """Look up a single opportunity by id."""
     for opportunity in discover():
         if opportunity.id == opportunity_id:

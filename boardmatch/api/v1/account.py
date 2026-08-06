@@ -18,6 +18,8 @@ from boardmatch.infrastructure.repositories.memory import (
 )
 from boardmatch.integrations import (
     AuditEvent as IntegrationAuditEvent,
+)
+from boardmatch.integrations import (
     AuditEventType,
     InMemoryIntegrationRepository,
     IntegrationStatus,

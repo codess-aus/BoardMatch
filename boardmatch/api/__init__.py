@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from .. import coach, discovery, network, profiles
@@ -20,8 +18,8 @@ from ..web import router as web_router
 from .errors import register_error_handlers
 from .health import router as health_router
 from .middleware import register_middleware
-from .v1.account import router as account_router
 from .v1 import router as v1_router
+from .v1.account import router as account_router
 
 
 @asynccontextmanager
@@ -55,7 +53,7 @@ _candidate: Candidate = profiles.load_sample_candidate()
 _tracker = ReadinessTracker(candidate=_candidate)
 
 
-def _serialise_fit(fit: FitResult, intro: Optional[IntroPath] = None) -> dict:
+def _serialise_fit(fit: FitResult, intro: IntroPath | None = None) -> dict:
     opportunity = fit.opportunity
     return {
         "id": opportunity.id,
@@ -91,7 +89,6 @@ def _serialise_fit(fit: FitResult, intro: Optional[IntroPath] = None) -> dict:
     }
 
 
-
 @app.get("/api/candidate")
 def get_candidate() -> dict:
     return {
@@ -109,8 +106,8 @@ def get_candidate() -> dict:
 @app.get("/api/opportunities")
 def list_opportunities(
     paid_only: bool = False,
-    sector: Optional[str] = None,
-    min_fee_aud: Optional[int] = None,
+    sector: str | None = None,
+    min_fee_aud: int | None = None,
     limit: int = 20,
 ) -> dict:
     """Discovery + fit + gap analysis + warm intro path in one call."""
@@ -122,7 +119,8 @@ def list_opportunities(
         "count": len(fits),
         "paid_count": sum(1 for f in fits if f.opportunity.is_paid),
         "results": [
-            _serialise_fit(f, network.best_path(_candidate, f.opportunity)) for f in fits
+            _serialise_fit(f, network.best_path(_candidate, f.opportunity))
+            for f in fits
         ],
     }
 
@@ -157,7 +155,7 @@ def intro_paths(opportunity_id: str) -> dict:
 
 
 @app.post("/api/coach/board-cv")
-def draft_board_cv(opportunity_id: Optional[str] = None) -> dict:
+def draft_board_cv(opportunity_id: str | None = None) -> dict:
     fit = None
     if opportunity_id:
         opportunity = discovery.get_opportunity(opportunity_id)
@@ -175,7 +173,9 @@ def draft_bio() -> dict:
 
 
 @app.post("/api/coach/outreach")
-def draft_outreach(opportunity_id: str, recipient: str = "Nominations Committee") -> dict:
+def draft_outreach(
+    opportunity_id: str, recipient: str = "Nominations Committee"
+) -> dict:
     opportunity = discovery.get_opportunity(opportunity_id)
     if opportunity is None:
         raise HTTPException(status_code=404, detail="Opportunity not found")

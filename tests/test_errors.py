@@ -40,8 +40,9 @@ class TestStructuredErrors:
 
     def test_500_does_not_leak_internal_details(self):
         """Force an unhandled exception and verify no internals leak."""
-        from boardmatch.api import app as _app
         from fastapi import APIRouter
+
+        from boardmatch.api import app as _app
 
         router = APIRouter()
 
@@ -66,7 +67,8 @@ class TestStructuredErrors:
         finally:
             # Clean up the test route
             _app.router.routes = [
-                r for r in _app.router.routes
+                r
+                for r in _app.router.routes
                 if getattr(r, "path", "") != "/test-internal-error"
             ]
 
