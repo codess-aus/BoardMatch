@@ -1,4 +1,10 @@
-"""Small SQL migration helpers for disposable BoardMatch databases."""
+"""Small SQL migration helpers for disposable BoardMatch databases.
+
+Also exposes a CLI entrypoint (``python -m boardmatch.infrastructure.db.migrations``)
+that runs the real Alembic migration chain — this is what
+``scripts/migrate.sh`` and ``.github/workflows/deploy.yml`` invoke to apply
+migrations against ``DATABASE_URL``.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +12,9 @@ import sqlite3
 from collections.abc import Iterable
 from pathlib import Path
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[3] / "migrations"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+MIGRATIONS_DIR = REPO_ROOT / "migrations"
+ALEMBIC_INI = REPO_ROOT / "alembic.ini"
 
 
 def migration_files(migrations_dir: Path = MIGRATIONS_DIR) -> list[Path]:
@@ -49,3 +57,22 @@ def apply_migrations(
     with connection:
         for path in files:
             connection.executescript(migration_sql(path, direction))
+
+
+def run_alembic_upgrade(revision: str = "head") -> None:
+    """Run the Alembic migration chain up to ``revision`` (default: head).
+
+    Uses ``boardmatch.config.Settings.database_url`` (i.e. the ``DATABASE_URL``
+    environment variable) as the migration target, matching how the
+    application itself resolves its database connection.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    config = Config(str(ALEMBIC_INI))
+    config.set_main_option("script_location", str(REPO_ROOT / "alembic"))
+    command.upgrade(config, revision)
+
+
+if __name__ == "__main__":
+    run_alembic_upgrade()
