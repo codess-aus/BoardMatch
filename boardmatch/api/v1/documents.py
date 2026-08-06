@@ -6,21 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 from ...auth import CurrentUser, get_current_user
+from ...config import get_settings
 from ...documents import (
-    SUPPORTED_CONTENT_TYPES,
     MAX_FILE_SIZE_BYTES,
+    SUPPORTED_CONTENT_TYPES,
     Document,
     DocumentStatus,
     InMemoryDocumentRepository,
     compute_content_hash,
 )
-from ...storage import LocalStorageBackend, StorageBackend
+from ...storage import StorageBackend, create_storage_backend
 
 router = APIRouter(prefix="/profile/documents", tags=["documents"])
 
 # Module-level instances (swapped in tests)
 _document_repo = InMemoryDocumentRepository()
-_storage_backend: StorageBackend = LocalStorageBackend()
+_storage_backend: StorageBackend | None = None
 
 
 def get_document_repo() -> InMemoryDocumentRepository:
@@ -28,6 +29,19 @@ def get_document_repo() -> InMemoryDocumentRepository:
 
 
 def get_storage_backend() -> StorageBackend:
+    """Return the process-wide storage backend, selecting it lazily.
+
+    Selection is deferred to first use (rather than import time) so it can
+    be based on live settings — Azure Blob Storage when
+    AZURE_STORAGE_ACCOUNT is configured, otherwise local filesystem storage.
+    """
+    global _storage_backend
+    if _storage_backend is None:
+        # Deliberately fail closed: if AZURE_STORAGE_ACCOUNT is configured but
+        # the client cannot be constructed (bad credentials, network, etc.),
+        # propagate the error rather than silently falling back to
+        # unencrypted local storage.
+        _storage_backend = create_storage_backend(get_settings())
     return _storage_backend
 
 
@@ -95,7 +109,7 @@ async def upload_document(
     storage_path = f"{user.user_id}/{content_hash}/{filename}"
     try:
         storage.save(storage_path, data)
-    except (IOError, OSError) as exc:
+    except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Storage failure: {exc}",
@@ -159,7 +173,7 @@ def delete_document(
     # Remove from storage (best effort)
     try:
         storage.delete(doc.storage_path)
-    except (IOError, OSError):
+    except OSError:
         pass  # File may already be gone
 
     repo.delete(document_id)

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from boardmatch.api import app
-from boardmatch.api.v1 import network as network_module
 from boardmatch.api.v1 import integrations as integrations_module
+from boardmatch.api.v1 import network as network_module
+from boardmatch.config import Settings, get_settings
 from boardmatch.integrations import InMemoryIntegrationRepository
 
 
@@ -41,9 +44,7 @@ AUTH_HEADERS_USER2 = {"X-Dev-User-Id": "user-2"}
 def _grant_microsoft_consent(client, headers=None):
     if headers is None:
         headers = AUTH_HEADERS
-    auth_resp = client.post(
-        "/api/v1/integrations/microsoft/authorize", headers=headers
-    )
+    auth_resp = client.post("/api/v1/integrations/microsoft/authorize", headers=headers)
     state = auth_resp.json()["state"]
     client.get(
         "/api/v1/integrations/microsoft/callback",
@@ -203,6 +204,7 @@ class TestIntroPaths:
         _grant_microsoft_consent(client)
         client.post("/api/v1/network/sync", headers=AUTH_HEADERS)
         from boardmatch import discovery
+
         opps = discovery.discover()
         if not opps:
             pytest.skip("No opportunities available")
@@ -224,6 +226,7 @@ class TestIntroPaths:
                 headers=AUTH_HEADERS,
             )
         from boardmatch import discovery
+
         opps = discovery.discover()
         if not opps:
             pytest.skip("No opportunities available")
@@ -253,6 +256,7 @@ class TestIntroPaths:
             headers=AUTH_HEADERS,
         )
         from boardmatch import discovery
+
         opps = discovery.discover()
         if not opps:
             pytest.skip("No opportunities available")
@@ -285,3 +289,89 @@ class TestUserIsolation:
         assert resp.json()["connections"] == []
         resp = client.get("/api/v1/network/connections", headers=AUTH_HEADERS)
         assert len(resp.json()["connections"]) == 3
+
+
+class TestRealGraphSync:
+    """When the Microsoft integration has a real access token (i.e. real
+    Graph OAuth is configured and the exchange succeeded), sync calls the
+    real Microsoft Graph /me/people endpoint instead of using fixtures. All
+    HTTP calls are mocked — no real network traffic is generated."""
+
+    @pytest.fixture(autouse=True)
+    def _configure_real_graph(self):
+        settings = Settings(
+            ms_graph_client_id="real-client-id",
+            ms_graph_client_secret="real-client-secret",
+        )
+        app.dependency_overrides[get_settings] = lambda: settings
+        yield
+        app.dependency_overrides.pop(get_settings, None)
+
+    def _grant_with_real_token(self, client, access_token="graph-token-123"):
+        auth_resp = client.post(
+            "/api/v1/integrations/microsoft/authorize", headers=AUTH_HEADERS
+        )
+        state = auth_resp.json()["state"]
+
+        mock_token_response = MagicMock()
+        mock_token_response.json.return_value = {"access_token": access_token}
+        mock_token_response.raise_for_status.return_value = None
+        with patch("requests.post", return_value=mock_token_response):
+            client.get(
+                "/api/v1/integrations/microsoft/callback",
+                params={"code": "auth-code", "state": state},
+            )
+
+    def test_sync_calls_graph_people_endpoint(self, client):
+        self._grant_with_real_token(client)
+
+        mock_graph_response = MagicMock()
+        mock_graph_response.json.return_value = {
+            "value": [
+                {
+                    "displayName": "Alex Rivera",
+                    "jobTitle": "Chief Risk Officer",
+                    "companyName": "Northbridge Bank",
+                }
+            ]
+        }
+        mock_graph_response.raise_for_status.return_value = None
+
+        with patch("requests.get", return_value=mock_graph_response) as mock_get:
+            resp = client.post("/api/v1/network/sync", headers=AUTH_HEADERS)
+
+        assert resp.status_code == 200
+        mock_get.assert_called_once()
+        url = mock_get.call_args.args[0]
+        assert url == "https://graph.microsoft.com/v1.0/me/people"
+        headers = mock_get.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer graph-token-123"
+
+        data = resp.json()
+        assert data["imported"] == 1
+        assert data["connections"][0]["name"] == "Alex Rivera"
+        assert data["connections"][0]["relationship"] == "Chief Risk Officer"
+        assert data["connections"][0]["organisations"] == ["Northbridge Bank"]
+        assert data["connections"][0]["source"] == "microsoft_graph"
+
+    def test_sync_falls_back_to_fixtures_on_graph_failure(self, client):
+        self._grant_with_real_token(client)
+
+        with patch("requests.get", side_effect=ConnectionError("network down")):
+            resp = client.post("/api/v1/network/sync", headers=AUTH_HEADERS)
+
+        # Sync still succeeds, using the deterministic fixture connections.
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["imported"] == 3
+        names = {c["name"] for c in data["connections"]}
+        assert "Sarah Chen" in names
+
+    def test_sync_without_real_token_uses_fixtures(self, client):
+        # No configured client secret in this case → simulated token → no
+        # access_token stored → fixtures used (existing deterministic path).
+        app.dependency_overrides.pop(get_settings, None)
+        _grant_microsoft_consent(client)
+        resp = client.post("/api/v1/network/sync", headers=AUTH_HEADERS)
+        assert resp.status_code == 200
+        assert resp.json()["imported"] == 3

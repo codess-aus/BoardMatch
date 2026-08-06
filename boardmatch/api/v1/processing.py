@@ -6,9 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ...auth import CurrentUser, get_current_user
+from ...config import get_settings
 from ...document_processing import (
-    DocumentProcessor, InMemoryProcessingResultRepository,
-    ProcessingStatus, TemplateExtractionProvider,
+    DocumentProcessor,
+    InMemoryProcessingResultRepository,
+    ProcessingStatus,
+    create_extraction_provider,
 )
 from ...documents import InMemoryDocumentRepository
 from .documents import get_document_repo
@@ -16,7 +19,9 @@ from .documents import get_document_repo
 router = APIRouter(prefix="/documents", tags=["document-processing"])
 
 _processing_repo = InMemoryProcessingResultRepository()
-_processor = DocumentProcessor(provider=TemplateExtractionProvider(), result_repo=_processing_repo)
+_processor = DocumentProcessor(
+    provider=create_extraction_provider(get_settings()), result_repo=_processing_repo
+)
 
 
 def get_processing_repo() -> InMemoryProcessingResultRepository:
@@ -98,5 +103,5 @@ def _load_document_content(storage_path: str) -> str | None:
     try:
         with open(storage_path, "r") as f:
             return f.read()
-    except (FileNotFoundError, IOError, UnicodeDecodeError):
+    except (OSError, FileNotFoundError, UnicodeDecodeError):
         return None

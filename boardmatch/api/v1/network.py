@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
+from boardmatch.api.v1.integrations import get_repository as get_integration_repository
 from boardmatch.auth import CurrentUser, get_required_user
 from boardmatch.integrations import (
+    GraphApiError,
     IntegrationRepository,
     IntegrationStatus,
+    fetch_graph_people,
 )
 from boardmatch.models import Candidate, Connection
 from boardmatch.network import paths_for
 
-from boardmatch.api.v1.integrations import get_repository as get_integration_repository
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/network", tags=["network"])
 
@@ -99,6 +102,24 @@ _FIXTURE_CONNECTIONS = [
 ]
 
 
+def _graph_person_to_fixture(person: dict) -> dict:
+    """Map a Microsoft Graph /me/people entry to our connection shape.
+
+    Graph's People API doesn't know about board seats, so that field is left
+    empty for real connections; users can enrich it manually afterwards.
+    """
+    job_title = person.get("jobTitle") or ""
+    company = person.get("companyName") or ""
+    relationship = job_title or "Microsoft 365 contact"
+    return {
+        "name": person.get("displayName") or "Unknown contact",
+        "relationship": relationship,
+        "organisations": [company] if company else [],
+        "board_seats": [],
+        "source": "microsoft_graph",
+    }
+
+
 class NetworkConnectionResponse(BaseModel):
     id: str
     name: str
@@ -120,8 +141,8 @@ class SyncResponse(BaseModel):
 
 
 class ConnectionUpdateRequest(BaseModel):
-    approved: Optional[bool] = None
-    strength: Optional[int] = Field(default=None, ge=1, le=10)
+    approved: bool | None = None
+    strength: int | None = Field(default=None, ge=1, le=10)
 
 
 class IntroPathItemResponse(BaseModel):
@@ -176,8 +197,23 @@ def sync_connections(
             detail="Active Microsoft integration consent required",
         )
 
+    connection_fixtures = _FIXTURE_CONNECTIONS
+    if integration.access_token is not None:
+        # Real Microsoft Graph consent (a genuine access token is present).
+        # Attempt a real call; fall back to the deterministic fixture set on
+        # any Graph failure so sync never breaks the user's workflow.
+        try:
+            people = fetch_graph_people(integration.access_token.get_secret_value())
+            if people:
+                connection_fixtures = [_graph_person_to_fixture(p) for p in people]
+        except GraphApiError as exc:
+            logger.warning(
+                "Microsoft Graph /me/people call failed for user %s: %s",
+                user.user_id, exc,
+            )
+
     imported: list[NetworkConnection] = []
-    for fixture in _FIXTURE_CONNECTIONS:
+    for fixture in connection_fixtures:
         conn = NetworkConnection(
             id=str(uuid.uuid4()),
             user_id=user.user_id,
