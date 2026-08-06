@@ -205,6 +205,33 @@ docker compose up --build
 
 This starts PostgreSQL and the FastAPI app. The current app still uses in-memory/local implementations for many workflows, so PostgreSQL is primarily useful for local infrastructure and migration experiments until the database repository layer is completed.
 
+#### Production-style run
+
+The `app` container runs `gunicorn` with `uvicorn.workers.UvicornWorker` in the
+default `docker-compose.yml`, not plain `uvicorn` — this gives worker
+supervision (auto-restart on crash) and graceful, timeout-bounded shutdowns
+suitable for rolling deploys. It's controlled by environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `WEB_CONCURRENCY` | `4` | Number of gunicorn/uvicorn worker processes. Size to your CPU allocation, e.g. `2 * cores + 1`. |
+| `GUNICORN_TIMEOUT` | `30` | Seconds a worker may spend on a single request before being killed. |
+| `GUNICORN_GRACEFUL_TIMEOUT` | `30` | Seconds gunicorn waits for in-flight requests to finish after receiving a shutdown signal. |
+| `GUNICORN_KEEPALIVE` | `5` | Seconds to keep idle keep-alive connections open. |
+
+For a more production-realistic local run — resource limits, `restart:
+always`, JSON-file log rotation, and a read-only root filesystem for the
+`app` container — layer the staging override file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build
+```
+
+See the comments in `Dockerfile` and `docker-compose.staging.yml` for the
+full rationale (writable-path requirements under a read-only root
+filesystem, least-privilege container flags, and base-image pinning /
+Dependabot update strategy).
+
 ## API overview
 
 ### Legacy demo routes

@@ -1,5 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
+gunicorn>=23.0
 pydantic>=2.7
 pyjwt[crypto]>=2.8
 cryptography>=41.0

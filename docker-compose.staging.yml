@@ -1,0 +1,55 @@
+# Production-realistic override for docker-compose.yml.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build
+#
+# Layers stricter resource limits, restart policies, log rotation, and a
+# read-only root filesystem on top of the local-dev compose file. Intended
+# for staging/production-like smoke testing before deploying to the real
+# target infrastructure (see .github/workflows/deploy.yml).
+services:
+  db:
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  app:
+    restart: always
+    # See Dockerfile's "Read-only root filesystem compatibility" comment for
+    # which paths need to stay writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/appuser
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      APP_ENV: staging
+      # Override per-environment worker sizing here as needed, e.g.:
+      # WEB_CONCURRENCY: "8"
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 2G
+        reservations:
+          cpus: "1.0"
+          memory: 1G

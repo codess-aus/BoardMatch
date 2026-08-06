@@ -1,0 +1,9 @@
+# Keeps the pinned base image in Dockerfile up to date. Opens a PR whenever a
+# newer python:3.12-slim digest is published upstream — review and re-pin the
+# ARG BASE_IMAGE digest in Dockerfile via that PR.
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
