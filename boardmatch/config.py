@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Mapping
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
@@ -29,7 +29,14 @@ class Settings(BaseModel):
     azure_openai_api_key: SecretStr | None = None
     azure_openai_deployment: str | None = None
     azure_storage_account: str | None = None
+    azure_storage_container: str = "documents"
     storage_encryption_required: bool = True
+    azure_doc_intelligence_endpoint: str | None = None
+    azure_doc_intelligence_key: SecretStr | None = None
+    ms_graph_client_id: str | None = None
+    ms_graph_client_secret: SecretStr | None = None
+    ms_graph_tenant_id: str = "common"
+    ms_graph_redirect_uri: str | None = None
     document_retention_days: int = 365
     extracted_text_retention_days: int = 90
     audit_log_retention_days: int = 90
@@ -43,6 +50,11 @@ class Settings(BaseModel):
         "azure_openai_api_key",
         "azure_openai_deployment",
         "azure_storage_account",
+        "azure_doc_intelligence_endpoint",
+        "azure_doc_intelligence_key",
+        "ms_graph_client_id",
+        "ms_graph_client_secret",
+        "ms_graph_redirect_uri",
         mode="before",
     )
     @classmethod
@@ -56,7 +68,9 @@ class Settings(BaseModel):
             raise ValueError("DATABASE_URL must be a valid URL")
         return value
 
-    @field_validator("auth_issuer", "azure_openai_endpoint")
+    @field_validator(
+        "auth_issuer", "azure_openai_endpoint", "azure_doc_intelligence_endpoint"
+    )
     @classmethod
     def validate_optional_url(cls, value: str | None) -> str | None:
         if value is not None and urlparse(value).scheme not in {"http", "https"}:
@@ -81,7 +95,7 @@ class Settings(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_production_settings(self) -> "Settings":
+    def validate_production_settings(self) -> Settings:
         if self.app_env != AppEnvironment.PRODUCTION:
             return self
 
@@ -119,7 +133,7 @@ class Settings(BaseModel):
     @classmethod
     def from_environment(
         cls, environ: Mapping[str, str] | None = None
-    ) -> "Settings":
+    ) -> Settings:
         """Load settings without requiring process-wide environment mutation in tests."""
         source = os.environ if environ is None else environ
         values = {
@@ -139,7 +153,14 @@ _ENVIRONMENT_FIELDS = {
     "AZURE_OPENAI_API_KEY": "azure_openai_api_key",
     "AZURE_OPENAI_DEPLOYMENT": "azure_openai_deployment",
     "AZURE_STORAGE_ACCOUNT": "azure_storage_account",
+    "AZURE_STORAGE_CONTAINER": "azure_storage_container",
     "STORAGE_ENCRYPTION_REQUIRED": "storage_encryption_required",
+    "AZURE_DOC_INTELLIGENCE_ENDPOINT": "azure_doc_intelligence_endpoint",
+    "AZURE_DOC_INTELLIGENCE_KEY": "azure_doc_intelligence_key",
+    "MS_GRAPH_CLIENT_ID": "ms_graph_client_id",
+    "MS_GRAPH_CLIENT_SECRET": "ms_graph_client_secret",
+    "MS_GRAPH_TENANT_ID": "ms_graph_tenant_id",
+    "MS_GRAPH_REDIRECT_URI": "ms_graph_redirect_uri",
     "LOG_LEVEL": "log_level",
     "DOCUMENT_RETENTION_DAYS": "document_retention_days",
     "EXTRACTED_TEXT_RETENTION_DAYS": "extracted_text_retention_days",

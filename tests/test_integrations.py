@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
 
 from boardmatch.api import app
 from boardmatch.api.v1 import integrations as integrations_module
+from boardmatch.config import Settings, get_settings
 from boardmatch.integrations import (
     AuditEventType,
     InMemoryIntegrationRepository,
-    Integration,
-    IntegrationStatus,
 )
 
 
@@ -157,9 +158,7 @@ class TestRevocation:
         )
 
         # Revoke
-        resp = client.delete(
-            "/api/v1/integrations/microsoft", headers=AUTH_HEADERS
-        )
+        resp = client.delete("/api/v1/integrations/microsoft", headers=AUTH_HEADERS)
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "revoked"
@@ -167,9 +166,7 @@ class TestRevocation:
 
     def test_revoke_not_found(self, client: TestClient):
         """Revoking non-existent integration returns 404."""
-        resp = client.delete(
-            "/api/v1/integrations/microsoft", headers=AUTH_HEADERS
-        )
+        resp = client.delete("/api/v1/integrations/microsoft", headers=AUTH_HEADERS)
         assert resp.status_code == 404
 
     def test_revoked_integration_rejects_sync(self, client: TestClient):
@@ -204,9 +201,7 @@ class TestRevocation:
         )
         client.delete("/api/v1/integrations/microsoft", headers=AUTH_HEADERS)
 
-        resp = client.delete(
-            "/api/v1/integrations/microsoft", headers=AUTH_HEADERS
-        )
+        resp = client.delete("/api/v1/integrations/microsoft", headers=AUTH_HEADERS)
         assert resp.status_code == 400
 
 
@@ -298,3 +293,86 @@ class TestTokenSecurity:
         assert "access_token_for_" not in integration.token_hash
         # Should be a hex hash (sha256 = 64 chars)
         assert len(integration.token_hash) == 64
+
+
+class TestRealGraphTokenExchange:
+    """When MS_GRAPH_CLIENT_ID/SECRET are configured, the callback performs a
+    real authorization-code exchange against Microsoft identity platform
+    instead of simulating one. All HTTP calls are mocked — no real network
+    traffic is generated."""
+
+    @pytest.fixture(autouse=True)
+    def _configure_real_graph(self):
+        settings = Settings(
+            ms_graph_client_id="real-client-id",
+            ms_graph_client_secret="real-client-secret",
+            ms_graph_tenant_id="contoso-tenant",
+            ms_graph_redirect_uri="https://boardmatch.example.com/callback",
+        )
+        app.dependency_overrides[get_settings] = lambda: settings
+        yield
+        app.dependency_overrides.pop(get_settings, None)
+
+    def test_authorize_uses_configured_tenant_and_client_id(self, client: TestClient):
+        resp = client.post(
+            "/api/v1/integrations/microsoft/authorize", headers=AUTH_HEADERS
+        )
+        assert resp.status_code == 200
+        url = resp.json()["authorize_url"]
+        assert "contoso-tenant" in url
+        assert "client_id=real-client-id" in url
+
+    def test_callback_performs_real_token_exchange(self, client: TestClient):
+        auth_resp = client.post(
+            "/api/v1/integrations/microsoft/authorize", headers=AUTH_HEADERS
+        )
+        state = auth_resp.json()["state"]
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"access_token": "real-graph-access-token"}
+        mock_response.raise_for_status.return_value = None
+
+        with patch("requests.post", return_value=mock_response) as mock_post:
+            resp = client.get(
+                "/api/v1/integrations/microsoft/callback",
+                params={"code": "auth-code", "state": state},
+            )
+
+        assert resp.status_code == 200
+        mock_post.assert_called_once()
+        call_kwargs = mock_post.call_args
+        assert "contoso-tenant" in call_kwargs.args[0]
+        assert call_kwargs.kwargs["data"]["client_id"] == "real-client-id"
+        assert call_kwargs.kwargs["data"]["client_secret"] == "real-client-secret"
+        assert call_kwargs.kwargs["data"]["code"] == "auth-code"
+
+        repo = integrations_module._repository
+        integration = repo.get("user-1", "microsoft")
+        assert integration is not None
+        assert integration.access_token is not None
+        assert integration.access_token.get_secret_value() == "real-graph-access-token"
+        # The hash reflects the real token, and the plain token is never exposed.
+        assert "real-graph-access-token" not in integration.token_hash
+
+    def test_callback_falls_back_to_simulated_token_on_exchange_failure(
+        self, client: TestClient
+    ):
+        auth_resp = client.post(
+            "/api/v1/integrations/microsoft/authorize", headers=AUTH_HEADERS
+        )
+        state = auth_resp.json()["state"]
+
+        with patch("requests.post", side_effect=ConnectionError("network down")):
+            resp = client.get(
+                "/api/v1/integrations/microsoft/callback",
+                params={"code": "auth-code-2", "state": state},
+            )
+
+        # The consent flow still completes even though the real exchange failed.
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "active"
+
+        repo = integrations_module._repository
+        integration = repo.get("user-1", "microsoft")
+        assert integration is not None
+        assert integration.access_token is None

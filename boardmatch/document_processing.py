@@ -10,12 +10,16 @@ No extracted data overwrites confirmed profile data automatically.
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Callable, Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessingStatus(str, Enum):
@@ -57,7 +61,7 @@ class ProcessingResult:
     status: ProcessingStatus = ProcessingStatus.PENDING
     extracted_fields: list[ExtractedField] = field(default_factory=list)
     attempts: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -188,17 +192,118 @@ class TemplateExtractionProvider:
 
 
 class AzureDocumentIntelligenceProvider:
-    """Hook point for Azure Document Intelligence in production."""
+    """Extracts CV/document fields using Azure AI Document Intelligence.
 
-    def __init__(self, endpoint: str = "", api_key: str = "") -> None:
+    Calls the prebuilt-read model to OCR the raw document text, then maps
+    that text to profile fields using ``fallback_provider`` (template-based
+    keyword extraction by default). This mirrors production usage where
+    Document Intelligence performs OCR on scanned/PDF resumes and downstream
+    logic maps the recognized text onto known profile fields.
+
+    A simple circuit breaker protects against repeated transient failures:
+    once ``failure_threshold`` consecutive calls fail, the circuit "opens"
+    and calls are routed straight to the fallback extractor for
+    ``reset_after_seconds`` before a retry is attempted again (half-open).
+    If the provider is not configured (no endpoint, or no credential), calls
+    always go straight to the fallback rather than raising — so document
+    processing never crashes because of Document Intelligence outages.
+    """
+
+    def __init__(
+        self,
+        endpoint: str = "",
+        api_key: str = "",
+        *,
+        fallback_provider: ExtractionProvider | None = None,
+        failure_threshold: int = 3,
+        reset_after_seconds: int = 300,
+    ) -> None:
         self.endpoint = endpoint
         self.api_key = api_key
+        self._fallback_provider: ExtractionProvider = (
+            fallback_provider or TemplateExtractionProvider()
+        )
+        self._failure_threshold = failure_threshold
+        self._reset_after = timedelta(seconds=reset_after_seconds)
+        self._consecutive_failures = 0
+        self._circuit_open_until: datetime | None = None
+
+    def configured(self) -> bool:
+        """True when enough configuration is present to call the real API."""
+        return bool(self.endpoint)
+
+    def _circuit_open(self) -> bool:
+        if self._circuit_open_until is None:
+            return False
+        if datetime.now(timezone.utc) >= self._circuit_open_until:
+            # Half-open: allow the next call through as a probe.
+            self._circuit_open_until = None
+            self._consecutive_failures = 0
+            return False
+        return True
+
+    def _record_failure(self, exc: Exception) -> None:
+        self._consecutive_failures += 1
+        logger.warning(
+            "Azure Document Intelligence call failed (%s/%s consecutive): %s",
+            self._consecutive_failures, self._failure_threshold, exc,
+        )
+        if self._consecutive_failures >= self._failure_threshold:
+            self._circuit_open_until = datetime.now(timezone.utc) + self._reset_after
+            logger.warning(
+                "Azure Document Intelligence circuit breaker open until %s",
+                self._circuit_open_until.isoformat(),
+            )
 
     def extract(self, document_content: str) -> list[ExtractedField]:
-        raise NotImplementedError(
-            "Azure Document Intelligence provider not yet configured. "
-            "Set AZURE_DOC_INTELLIGENCE_ENDPOINT and AZURE_DOC_INTELLIGENCE_KEY."
+        if not self.configured() or self._circuit_open():
+            return self._fallback_provider.extract(document_content)
+
+        try:
+            recognized_text = self._analyze(document_content)
+            self._consecutive_failures = 0
+            return self._fallback_provider.extract(recognized_text)
+        except Exception as exc:  # noqa: BLE001 - any SDK/network failure
+            self._record_failure(exc)
+            return self._fallback_provider.extract(document_content)
+
+    def _analyze(self, document_content: str) -> str:
+        """Call the Document Intelligence prebuilt-read model and return recognized text."""
+        from azure.ai.documentintelligence import DocumentIntelligenceClient
+        from azure.ai.documentintelligence.models import AnalyzeDocumentRequest
+        from azure.core.credentials import AzureKeyCredential
+
+        if self.api_key:
+            credential = AzureKeyCredential(self.api_key)
+        else:  # pragma: no cover - requires a real managed identity
+            from azure.identity import DefaultAzureCredential
+
+            credential = DefaultAzureCredential()
+
+        client = DocumentIntelligenceClient(endpoint=self.endpoint, credential=credential)
+        poller = client.begin_analyze_document(
+            "prebuilt-read",
+            AnalyzeDocumentRequest(bytes_source=document_content.encode("utf-8")),
         )
+        result = poller.result()
+        return result.content or ""
+
+
+def create_extraction_provider(settings: object) -> ExtractionProvider:
+    """Select an extraction provider based on application settings.
+
+    Uses Azure Document Intelligence when
+    ``AZURE_DOC_INTELLIGENCE_ENDPOINT`` is configured (falling back to the
+    template extractor on failure via the built-in circuit breaker),
+    otherwise uses the template extractor directly.
+    """
+    endpoint = getattr(settings, "azure_doc_intelligence_endpoint", None)
+    if not endpoint:
+        return TemplateExtractionProvider()
+
+    api_key_secret = getattr(settings, "azure_doc_intelligence_key", None)
+    api_key = api_key_secret.get_secret_value() if api_key_secret else ""
+    return AzureDocumentIntelligenceProvider(endpoint=endpoint, api_key=api_key)
 
 
 @runtime_checkable
