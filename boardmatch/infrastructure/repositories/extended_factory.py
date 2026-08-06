@@ -63,6 +63,16 @@ class ExtendedRepositories:
     retention_network_repo: RetentionNetworkRepo
 
 
+# Process-wide cache of in-memory extended repository bundles, keyed by
+# ``Settings.database_url``. See the equivalent cache in
+# ``boardmatch.infrastructure.repositories.factory`` for the rationale: each
+# router module calls ``create_extended_repositories`` independently at
+# import time, and without caching every module would get its own isolated
+# ``InMemory*`` instances instead of sharing state the way the DB-backed
+# repositories already do.
+_extended_repositories_cache: dict[str, ExtendedRepositories] = {}
+
+
 def create_extended_repositories(
     settings: Settings, *, audit_retention_days: int | None = None
 ) -> ExtendedRepositories:
@@ -84,14 +94,27 @@ def create_extended_repositories(
             retention_network_repo=DbRetentionNetworkRepository(session_factory),
         )
 
-    return ExtendedRepositories(
-        draft_repo=InMemoryDraftRepository(),
-        document_repo=InMemoryDocumentRepository(),
-        integration_repo=InMemoryIntegrationRepository(),
-        audit_logger=AuditLogger(retention_days=retention_days),
-        extracted_text_repo=InMemoryExtractedTextRepository(),
-        retention_network_repo=InMemoryRetentionNetworkRepository(),
-    )
+    cached = _extended_repositories_cache.get(settings.database_url)
+    if cached is None:
+        cached = ExtendedRepositories(
+            draft_repo=InMemoryDraftRepository(),
+            document_repo=InMemoryDocumentRepository(),
+            integration_repo=InMemoryIntegrationRepository(),
+            audit_logger=AuditLogger(retention_days=retention_days),
+            extracted_text_repo=InMemoryExtractedTextRepository(),
+            retention_network_repo=InMemoryRetentionNetworkRepository(),
+        )
+        _extended_repositories_cache[settings.database_url] = cached
+
+    return cached
+
+
+def reset_extended_repositories_cache() -> None:
+    """Clear the cached in-memory extended repository bundles (tests only)."""
+    _extended_repositories_cache.clear()
+
+
+_network_connection_repo_cache: dict[str, object] = {}
 
 
 def create_network_connection_repo(settings: Settings):
@@ -101,6 +124,11 @@ def create_network_connection_repo(settings: Settings):
     in-memory implementation lives in ``boardmatch.api.v1.network`` — a
     router module that itself imports other router modules, so importing it
     from here at module scope would create a circular import.
+
+    The in-memory instance is cached per ``database_url`` for the same
+    reason as :func:`create_extended_repositories` — so any future caller
+    beyond ``boardmatch.api.v1.network`` shares the same store instead of
+    getting an isolated one.
     """
     from boardmatch.infrastructure.repositories.extended_db import (
         DbNetworkConnectionRepository,
@@ -110,6 +138,16 @@ def create_network_connection_repo(settings: Settings):
         session_factory = get_session_factory(settings.database_url)
         return DbNetworkConnectionRepository(session_factory)
 
-    from boardmatch.api.v1.network import InMemoryNetworkRepository
+    cached = _network_connection_repo_cache.get(settings.database_url)
+    if cached is None:
+        from boardmatch.api.v1.network import InMemoryNetworkRepository
 
-    return InMemoryNetworkRepository()
+        cached = InMemoryNetworkRepository()
+        _network_connection_repo_cache[settings.database_url] = cached
+
+    return cached
+
+
+def reset_network_connection_repo_cache() -> None:
+    """Clear the cached in-memory network-connection repo (tests only)."""
+    _network_connection_repo_cache.clear()

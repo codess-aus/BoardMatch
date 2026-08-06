@@ -6,6 +6,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
+from boardmatch import discovery
 from boardmatch.api import app
 from boardmatch.api.v1.applications import _application_repo, _opportunity_repo
 from boardmatch.api.v1.authorization import require_admin
@@ -41,6 +42,10 @@ def _reset_state():
     yield
     _application_repo._store.clear()
     _opportunity_repo._store.clear()
+    # Restore the discovery-seeded opportunities so other test modules that
+    # share this same in-memory repo instance see it in its default state.
+    for opportunity in discovery.discover():
+        _opportunity_repo.add(opportunity)
     _draft_repo._store.clear()
     _candidate_repo._store.clear()
     _profile_versions.clear()
