@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
 from boardmatch.fit import SCORING_VERSION, score_opportunity
+from boardmatch.infrastructure.repositories.factory import create_repositories
 from boardmatch.infrastructure.repositories.memory import (
     InMemoryCandidateRepository,
     InMemoryFitEvaluationRepository,
@@ -24,9 +26,10 @@ from .schemas import (
 
 router = APIRouter(tags=["fit-evaluations"])
 
-_evaluation_repo = InMemoryFitEvaluationRepository()
-_candidate_repo = InMemoryCandidateRepository()
-_opportunity_repo = InMemoryOpportunityRepository()
+_repos = create_repositories(get_settings())
+_evaluation_repo = _repos.fit_evaluation_repo
+_candidate_repo = _repos.candidate_repo
+_opportunity_repo = _repos.opportunity_repo
 
 
 def get_evaluation_repo() -> InMemoryFitEvaluationRepository:

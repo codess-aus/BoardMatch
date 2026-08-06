@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from boardmatch.auth import CurrentUser, get_required_user
+from boardmatch.config import get_settings
+from boardmatch.infrastructure.repositories.factory import create_repositories
 from boardmatch.infrastructure.repositories.memory import (
     InMemoryApplicationRepository,
     InMemoryOpportunityRepository,
@@ -32,8 +34,9 @@ from .schemas import (
 
 router = APIRouter(tags=["applications"], dependencies=[Depends(require_active_user)])
 
-_application_repo = InMemoryApplicationRepository()
-_opportunity_repo = InMemoryOpportunityRepository()
+_repos = create_repositories(get_settings())
+_application_repo = _repos.application_repo
+_opportunity_repo = _repos.opportunity_repo
 
 
 def get_application_repo() -> InMemoryApplicationRepository:
