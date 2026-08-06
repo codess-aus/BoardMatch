@@ -20,48 +20,95 @@ Paid board and NED (non-executive director) positions are often an *invisible ma
 
 ## Current implementation status
 
-BoardMatch is between demo and production-ready product:
+This section aims to be an honest, current picture of what is genuinely
+production-ready today vs. what remains as known follow-up work. See also
+`docs/go-live-checklist.md` for the concrete operator sign-off checklist
+before flipping real traffic to a production deployment.
 
-- The app runs locally with FastAPI and a deterministic CLI demo.
-- The stable public API surface is under `/api/v1`.
-- A DB-backed repository layer now exists in `boardmatch/infrastructure/repositories/db.py`,
-  built on SQLAlchemy 2.x. It provides Postgres-compatible parity for the four repositories
-  previously implemented only in-memory in `boardmatch/infrastructure/repositories/memory.py`
-  (candidate profiles, opportunities, applications/events, fit evaluations). A factory
-  (`boardmatch/infrastructure/repositories/factory.py`) selects memory vs DB-backed repositories
-  based on the `DATABASE_URL` scheme: SQLite keeps using in-memory repositories (local/test
-  default), while `postgresql://`/`postgresql+psycopg://` URLs use the SQLAlchemy-backed classes.
-- Alembic manages schema migrations end to end (`alembic/`), including a baseline revision that
-  folds in the original `migrations/0001_opportunity_source_schema.sql` schema. `scripts/migrate.sh`
-  and the CI/deploy migration step (`python -m boardmatch.infrastructure.db.migrations`) both run
-  the real Alembic upgrade chain against `DATABASE_URL`.
-- Draft, document, network-connection, integration/audit-event, and retention-state storage
-  each now have a durable DB-backed counterpart alongside their original module-local
-  in-memory implementations (`boardmatch/drafts.py`, `boardmatch/documents.py`,
-  `boardmatch/api/v1/network.py`, `boardmatch/integrations.py`, `boardmatch/audit.py`,
-  `boardmatch/retention.py`). A second factory
-  (`boardmatch/infrastructure/repositories/extended_factory.py`) selects memory vs DB-backed
-  implementations for these stores using the same `DATABASE_URL` scheme rule as the core
-  factory. The Alembic migration `0003_extended_stores` adds the corresponding tables
-  (`drafts`, `documents`, `network_connections`, `integrations`, `integration_audit_events`,
-  `audit_events`, `extracted_texts`, `retention_network_records`).
-  - Security note: real Microsoft Graph OAuth access tokens are still **never** persisted —
-    the DB-backed integration store only writes the one-way `token_hash` and metadata,
-    matching the in-memory implementation's invariant. Integration rows loaded from the
-    database always come back with `access_token=None`.
-  - `boardmatch/api/v1/network.py` and `boardmatch/retention.py` each maintain their own
-    separate network-connection store (a pre-existing duplication, not introduced by this
-    change) — both now have independent DB-backed tables (`network_connections` and
+### Production-ready
+
+- The app runs locally with FastAPI and a deterministic CLI demo, and the stable public API
+  surface is under `/api/v1`.
+- **Persistence**: a DB-backed repository layer (`boardmatch/infrastructure/repositories/db.py`
+  and `extended_db.py`), built on SQLAlchemy 2.x, covers *every* store BoardMatch uses — candidate
+  profiles, opportunities, applications/events, fit evaluations, drafts, documents, network
+  connections, integrations/audit events, and retention state. Two factories
+  (`boardmatch/infrastructure/repositories/factory.py` and `extended_factory.py`) select
+  memory-backed vs. DB-backed implementations based on the `DATABASE_URL` scheme: SQLite keeps
+  using in-memory repositories (the local/test default), while `postgresql://`/`postgresql+psycopg://`
+  URLs use the SQLAlchemy-backed classes. Alembic manages schema migrations end to end
+  (`alembic/`), and CI now runs the full Alembic upgrade chain plus the repository contract test
+  suite against a **real Postgres service container** (see `.github/workflows/ci.yml`), not just
+  SQLite — this closes out what was previously tracked as follow-up work.
+  - Security note: real Microsoft Graph OAuth access tokens are still **never** persisted — the
+    DB-backed integration store only writes the one-way `token_hash` and metadata, matching the
+    in-memory implementation's invariant. Integration rows loaded from the database always come
+    back with `access_token=None`.
+  - `boardmatch/api/v1/network.py` and `boardmatch/retention.py` each maintain their own separate
+    network-connection store (a pre-existing duplication, not introduced by this persistence
+    work) — both now have independent DB-backed tables (`network_connections` and
     `retention_network_records` respectively) preserving that existing behavior.
-- The DB-backed repositories (core and extended) are covered by contract tests
-  (`tests/repositories/`) run against an
-  ephemeral in-memory SQLite database (via SQLAlchemy) rather than a live PostgreSQL server, since
-  no Postgres instance is available in this environment; validating against real Postgres in CI is
-  tracked as follow-up work.
+- **Azure integrations**: real Azure Blob Storage (document storage), Azure AI Document
+  Intelligence (CV/document text extraction), and Microsoft Graph (network sync OAuth) clients are
+  implemented in `boardmatch/storage.py`, `boardmatch/document_processing.py`, and
+  `boardmatch/integrations.py`, each falling back to deterministic local behavior when not
+  configured so local dev/tests stay offline.
+- **Runtime hardening**: the production Docker image runs under `gunicorn` with the
+  `UvicornWorker` class and configured resource/timeout limits (see `Dockerfile`,
+  `docker-compose.staging.yml`).
+- **Security**: Azure Key Vault-sourced secrets (`Settings.from_key_vault_and_environment`),
+  CORS/security-headers/rate-limiting middleware (`boardmatch/api/middleware.py`,
+  `boardmatch/api/v1/rate_limit.py`), and CI security gates — full `ruff check`/`ruff format --check`,
+  `pip-audit`, `gitleaks`, and CodeQL — all run as **blocking** checks on every PR.
+- **Observability**: a Prometheus-format `/metrics` endpoint, structured JSON logs, scheduled
+  alert-rule evaluation with webhook notification (URLs redacted from failure logs), and
+  retry/circuit-breaker resilience wrapping external Azure/Graph calls (`boardmatch/monitoring.py`,
+  `boardmatch/resilience.py` equivalents — see `docs/scheduled-jobs.md` and
+  `docs/operational-dashboards.md`). A scheduled retention-cleanup script
+  (`scripts/run_retention_cleanup.py`) enforces the configured retention windows.
+- **CI/CD**: `.github/workflows/deploy.yml` is a real pipeline — build/push to Azure Container
+  Registry, Alembic migration, Azure Container Apps deploy, `/health/ready` smoke test, and
+  automatic rollback to the previously-running image on smoke-test failure — gated by GitHub
+  Environments (`staging`, `production`) for approval control. See `docs/deployment.md` for the
+  full secrets/variables reference and what has/hasn't been validated against a real Azure
+  subscription (static/structural validation only — no live run yet; see the checklist).
+- **Testing**: `python -m pytest` — 902 passing, 2 skipped, and exactly one known pre-existing
+  failure (`tests/test_account.py::TestAuditEvents::test_returns_logged_events`, an audit-event
+  ordering assertion unrelated to this effort's changes, tracked separately). Load-testing tooling
+  (`loadtest/`) and a disaster-recovery runbook (`docs/disaster-recovery.md`) exist, with the DR
+  runbook's *procedure* (backup → simulate disaster → restore → verify) rehearsed locally against
+  SQLite — the Azure-specific commands (Postgres PITR, Blob Storage recovery) are documented but
+  **not yet rehearsed against a real Azure subscription**.
 - Authentication is environment-aware: local/test can use development headers, while production
   requires configured issuer/audience settings and rejects the development bypass.
 - Demo source data remains available in `boardmatch/data/`; production startup is designed not to
   automatically import synthetic fixtures.
+
+### Known follow-up work / not yet done
+
+- **[Issue #106](https://github.com/codess-aus/BoardMatch/issues/106) (open)**: in local/test mode
+  only (SQLite `DATABASE_URL`, in-memory repositories), each router constructs its own separate
+  `InMemoryXRepository()` instance rather than sharing one via the factory, which can cause
+  requests touching the same logical data (e.g. fit evaluations) to 404 unless seeded within the
+  same repo instance. **This does not affect Postgres-backed production behavior** (all routers
+  share the same DB) — it's a local dev/test consistency quirk only, not a production blocker, but
+  it should be fixed before relying heavily on local in-memory-mode integration testing.
+- **No live Azure run yet**: every Azure-facing piece of this effort (the deploy pipeline, Key
+  Vault secret sourcing, Blob Storage/Document Intelligence/Graph integrations, disaster-recovery
+  Azure commands) has been validated by code review, unit/contract tests, and — for the database
+  layer specifically — a real Postgres *service container* in CI. None of it has yet been
+  exercised against a real Azure subscription (real ACR, Container Apps, Key Vault, Document
+  Intelligence resource, Entra app registration). See `docs/go-live-checklist.md` for the specific
+  provisioning and one-time smoke-test steps a human operator must complete first.
+- **Deploy pipeline prerequisites are not provisioned**: `deploy.yml` assumes an Azure Container
+  Registry, two Container Apps, two Postgres databases, and the associated GitHub
+  secrets/variables/Environments already exist (see `docs/deployment.md`, "Prerequisites not
+  managed by this workflow"). None of that infrastructure has been created as part of this
+  effort — it is explicitly out of scope for this repository and is the first item on the go-live
+  checklist.
+- Retention/alerting defaults (`document_retention_days`, `alert_evaluation_interval_seconds`,
+  etc.) are reasonable starting points but have not been reviewed against any real
+  organization-specific compliance or on-call policy — do this before go-live.
 
 ## How to Use Guide
 
