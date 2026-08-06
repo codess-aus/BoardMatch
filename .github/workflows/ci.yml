@@ -7,6 +7,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: boardmatch
+          POSTGRES_PASSWORD: boardmatch
+          POSTGRES_DB: boardmatch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U boardmatch"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      # Real Postgres service container above — used by the dedicated
+      # Postgres migration/repository steps below, in addition to (not
+      # instead of) the default SQLite-based test run.
+      POSTGRES_TEST_DATABASE_URL: postgresql+psycopg://boardmatch:boardmatch@localhost:5432/boardmatch
     steps:
       - uses: actions/checkout@v4
         with:
@@ -33,6 +52,16 @@ jobs:
 
       - name: Run tests
         run: python -m pytest --tb=short -q
+
+      - name: Alembic upgrade against real Postgres
+        env:
+          DATABASE_URL: ${{ env.POSTGRES_TEST_DATABASE_URL }}
+        run: alembic -c alembic.ini upgrade head
+
+      - name: Run repository contract tests against real Postgres
+        env:
+          TEST_DATABASE_URL: ${{ env.POSTGRES_TEST_DATABASE_URL }}
+        run: python -m pytest tests/repositories/ --tb=short -q
 
       - name: Dependency vulnerability scan (pip-audit)
         run: |
