@@ -1,96 +1,108 @@
 # Rollback Procedure
 
-This document describes how to roll back a failed deployment for the BoardMatch application.
+This document describes how to roll back a failed BoardMatch deployment.
+
+## Current deployment status
+
+The repository contains CI and deployment workflow scaffolding, a production Dockerfile, and SQL migration files. Some deployment commands are placeholders until the target hosting platform is wired in. Treat this document as the operational checklist to follow once staging/production deployment jobs are connected to real infrastructure.
 
 ## Prerequisites
 
 - Access to the deployment environment (staging or production)
 - GitHub repository write access
-- Knowledge of the last known good release SHA
+- Knowledge of the last known good release SHA or image tag
+- Access to deployment logs and GitHub Actions runs
+- A backup/restore process for production data before rolling back schema-affecting releases
 
-## Quick Rollback Steps
+## Quick rollback steps
 
-### 1. Identify the Last Good Release
+### 1. Identify the last good release
 
 ```bash
-# List recent deployments (check GitHub Actions runs)
+# List recent deployments and workflow runs
 gh run list --workflow=deploy.yml --limit=10
 
-# Or check git tags / deploy logs for the last successful SHA
+# Or inspect recent commits/tags locally
 git log --oneline -10
 ```
 
-### 2. Revert the Application
+Record the last known good SHA before making changes.
 
-**Option A: Re-deploy a previous commit**
+### 2. Revert or redeploy the application
+
+**Option A: Fix forward or create a revert commit**
+
+Use this when the safest path is to undo the faulty application change on `main`:
 
 ```bash
-# Trigger a deployment of the last known good SHA
-git revert HEAD --no-edit
+# Replace <BAD_SHA> with the commit to revert
+git revert <BAD_SHA>
 git push origin main
 ```
 
-This creates a revert commit that triggers the deploy pipeline with the previous application state.
+The push triggers the deployment workflow for the reverted application state.
 
-**Option B: Manual container rollback**
+**Option B: Redeploy a previous container image**
 
-If using container-based deployment, redeploy the previous image tag:
+Use this when the deployment platform supports direct image rollback:
 
 ```bash
 # Replace <PREVIOUS_SHA> with the last known good release identifier
 docker pull ghcr.io/codess-aus/boardmatch:<PREVIOUS_SHA>
 docker stop boardmatch-app
-docker run -d --name boardmatch-app ghcr.io/codess-aus/boardmatch:<PREVIOUS_SHA>
+docker rm boardmatch-app
+docker run -d --name boardmatch-app -p 8000:8000 ghcr.io/codess-aus/boardmatch:<PREVIOUS_SHA>
 ```
 
-### 3. Roll Back Database Migrations
+Adapt the commands to the actual container platform once production hosting is configured.
 
-If the deployment included database schema changes that must be reverted:
+### 3. Roll back database changes only when necessary
 
-```bash
-# Run migrations in the "down" direction
-python -m boardmatch.infrastructure.db.migrations --direction down
-```
+The current migration helper is a library for applying SQL sections to a provided SQLite connection in tests; it does not expose a production command-line rollback interface. If a release includes incompatible database changes:
 
-Or connect directly and run the down migration SQL:
+1. Confirm whether the application rollback can run against the newer schema.
+2. Prefer forward-compatible migrations where possible.
+3. Restore from backup or run a carefully reviewed manual down migration only when the schema is incompatible.
+4. Use the `-- migrate:down` section in the relevant SQL migration file as the source for manual rollback SQL.
 
-```bash
-# Each migration file contains a "-- migrate:down" section
-# Apply the relevant down migration manually if needed
-```
+> **Warning:** Only roll back schema changes after confirming the data impact and backup status. Many migrations should be forward-compatible and should not be reversed during an application-only rollback.
 
-> **Warning:** Only roll back migrations if the new schema is incompatible with the
-> previous application version. Many migrations are forward-compatible.
-
-### 4. Verify the Rollback
+### 4. Verify the rollback
 
 ```bash
-# Check application health
+# Check application liveness
 curl -f http://<HOST>:8000/health/live
 
-# Run smoke tests against the rolled-back environment
-python -m pytest tests/ -k "not slow" --tb=short
+# Check readiness endpoint
+curl -f http://<HOST>:8000/health/ready
+
+# Run smoke tests against the repository or a disposable environment
+python -m pytest --tb=short -q
 ```
 
-## Rollback Decision Matrix
+Also verify the key user workflows affected by the incident, such as sign-in, profile retrieval, opportunity search, application tracking, and coaching draft generation.
+
+## Rollback decision matrix
 
 | Scenario | Action |
-|----------|--------|
-| Tests fail in CI | PR is blocked; no rollback needed |
-| Staging deploy fails | Fix forward or revert commit |
-| Production deploy fails (no migration) | Revert commit → auto-redeploy |
-| Production deploy fails (with migration) | Revert commit + run down migration |
-| Data corruption detected | Restore from backup + revert commit |
+|---|---|
+| Tests fail in CI | Block the PR; no production rollback needed |
+| Staging deploy fails | Fix forward or revert the change before production |
+| Production deploy fails with no schema change | Revert commit or redeploy previous image |
+| Production deploy fails after schema change | Assess schema compatibility; restore backup or manually apply reviewed down SQL only if required |
+| Data corruption detected | Stop writes if possible, restore from backup, then redeploy a known good application version |
 
 ## Communication
 
-1. Notify the team in the `#boardmatch-ops` channel
-2. Create a GitHub issue documenting the incident
-3. After stabilization, conduct a post-mortem
+1. Notify the operations channel or incident contact.
+2. Create a GitHub issue documenting the incident, impact, and rollback decision.
+3. Record the release SHA, rollback SHA/image, verification checks, and follow-up actions.
+4. After stabilization, conduct a post-mortem.
 
 ## Prevention
 
-- All schema changes should be backward-compatible when possible
-- Use feature flags for risky changes
-- Monitor error rates after each deployment
-- The `deploy-production` job requires manual approval via GitHub Environment protection rules
+- Keep schema changes backward-compatible where possible.
+- Use feature flags for risky changes.
+- Monitor error rates and health checks after each deployment.
+- Keep production deployment protected with GitHub Environment approval rules.
+- Test rollback paths in staging before relying on them in production.

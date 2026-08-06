@@ -4,15 +4,17 @@ This document describes the operational dashboards and monitoring setup for Boar
 
 ## Overview
 
-BoardMatch uses in-process metrics collection with structured JSON logging. Metrics are emitted during normal application operation and can be scraped by external monitoring systems (Prometheus, Azure Monitor, Datadog, etc.).
+BoardMatch currently uses in-process metrics collection with structured JSON logging. Metrics are emitted during normal application operation and can be adapted for external monitoring systems such as Prometheus, Azure Monitor, Datadog, or another observability platform.
+
+The current implementation defines metrics and alert rules in `boardmatch/monitoring.py`. It does not yet expose a Prometheus-format `/metrics` endpoint; external scraping/export should be added by adapting the `MetricsCollector` data.
 
 ## Metrics
 
-| Metric Name | Type | Description | Labels |
+| Metric name | Type | Description | Labels |
 |---|---|---|---|
 | `http_request_duration` | Histogram | Request processing time in milliseconds | `method`, `path`, `status_code` |
-| `http_error_count` | Counter | Count of HTTP error responses (4xx/5xx) | `status_code`, `method` |
-| `database_latency` | Histogram | Database operation latency in milliseconds | — |
+| `http_error_count` | Counter | Count of HTTP error responses | `status_code`, `method` |
+| `database_latency` | Histogram | Database operation latency in milliseconds when recorded by services | — |
 | `ingestion_success_count` | Counter | Successful ingestion runs | `source_key` |
 | `ingestion_failure_count` | Counter | Failed ingestion runs | `source_key` |
 | `stale_opportunity_count` | Gauge | Number of opportunities past refresh SLA | — |
@@ -20,55 +22,63 @@ BoardMatch uses in-process metrics collection with structured JSON logging. Metr
 | `ai_generation_failures` | Counter | AI content generation errors | — |
 | `graph_sync_failures` | Counter | Graph database sync errors | — |
 
-### PII Safety
+## PII safety
 
-All metric labels are validated against a blocklist. The following label keys are **never** emitted:
-- `email`, `user_email`, `phone`, `ssn`, `password`, `token`
+Metric labels are sanitized before storage. The following label keys are never emitted:
 
-Log messages are automatically redacted for email addresses, phone numbers, and SSNs.
+- `email`
+- `user_email`
+- `phone`
+- `ssn`
+- `password`
+- `token`
 
-## Alert Rules
+Structured log formatting redacts email addresses, phone numbers, and SSNs. Privacy-specific utilities in `boardmatch/retention.py` also redact token-like values.
 
-### Critical Alerts
+## Alert rules
+
+Alert rules are defined in `boardmatch/monitoring.py` as `ALERT_RULES` and can be evaluated with `evaluate_alerts()`.
+
+### Critical alerts
 
 | Alert | Condition | Window | Action |
 |---|---|---|---|
-| **Database Failure** | `database_latency > 5000ms` | 60s | Page on-call engineer. Check database connectivity and connection pool. |
-| **Repeated Ingestion Failure** | `ingestion_failure_count >= 2` | 5 min | Investigate source availability. Check network connectivity to data sources. |
+| **Database Failure** | `database_latency > 5000ms` | 60s | Check database connectivity, connection pool, and recent migration/deployment changes. |
+| **Repeated Ingestion Failure** | `ingestion_failure_count >= 2` | 5 min | Investigate source availability, credentials, network access, and parser changes. |
 
-### Warning Alerts
+### Warning alerts
 
 | Alert | Condition | Window | Action |
 |---|---|---|---|
-| **Stale Opportunity Data** | `stale_opportunity_count > 0` | 1 hour | Verify ingestion scheduler is running. Check source API status. |
-| **Auth Failure Spike** | `http_error_count{status_code=401} > 10` | 5 min | Review access logs for potential credential stuffing. Consider rate limiting. |
+| **Stale Opportunity Data** | `stale_opportunity_count > 0` | 1 hour | Verify ingestion is running and source records are refreshing. |
+| **Auth Failure Spike** | `http_error_count{status_code=401} > 10` | 5 min | Review access logs for invalid credentials or possible credential stuffing. |
 
-## Dashboard Panels
+## Dashboard panels
 
-### Request Performance Dashboard
+### Request performance dashboard
 
-1. **Request Rate** — Requests per second grouped by `method` and `path`
-2. **Response Time P50/P95/P99** — Percentiles of `http_request_duration`
-3. **Error Rate** — `http_error_count` as a percentage of total requests
-4. **Status Code Distribution** — Breakdown by `status_code`
+1. **Request rate** — Requests per second grouped by `method` and `path`.
+2. **Response time P50/P95/P99** — Percentiles of `http_request_duration`.
+3. **Error rate** — `http_error_count` as a percentage of total requests.
+4. **Status code distribution** — Breakdown by `status_code`.
 
-### Ingestion Health Dashboard
+### Ingestion health dashboard
 
-1. **Ingestion Success Rate** — `ingestion_success_count / (success + failure)` over time
-2. **Failure Count** — `ingestion_failure_count` per `source_key`
-3. **Stale Opportunities** — Current value of `stale_opportunity_count`
-4. **Last Successful Run** — Time since last `ingestion_success_count` increment
+1. **Ingestion success rate** — `ingestion_success_count / (success + failure)` over time.
+2. **Failure count** — `ingestion_failure_count` per `source_key`.
+3. **Stale opportunities** — Current value of `stale_opportunity_count`.
+4. **Last successful run** — Time since the last successful ingestion run.
 
-### Infrastructure Dashboard
+### Infrastructure dashboard
 
-1. **Database Latency** — P50/P95/P99 of `database_latency`
-2. **Document Processing Errors** — `document_processing_failures` rate
-3. **AI Generation Errors** — `ai_generation_failures` rate
-4. **Graph Sync Errors** — `graph_sync_failures` rate
+1. **Database latency** — P50/P95/P99 of recorded `database_latency` observations.
+2. **Document processing errors** — Rate of `document_processing_failures`.
+3. **AI generation errors** — Rate of `ai_generation_failures`.
+4. **Graph sync errors** — Rate of `graph_sync_failures`.
 
-## Structured Logging
+## Structured logging
 
-All application logs are emitted in JSON format:
+Application logs are formatted as JSON-style records:
 
 ```json
 {
@@ -79,33 +89,32 @@ All application logs are emitted in JSON format:
 }
 ```
 
-### Log Levels
+### Log levels
 
-- **ERROR** — Unhandled exceptions, database failures, external service errors
-- **WARNING** — Degraded performance, approaching limits, non-critical failures
-- **INFO** — Request/response logs, ingestion completions, state changes
-- **DEBUG** — Detailed tracing (never enabled in production)
+- **ERROR** — Unhandled exceptions, database failures, external service errors.
+- **WARNING** — Degraded performance, approaching limits, non-critical failures.
+- **INFO** — Request/response logs, ingestion completions, state changes.
+- **DEBUG** — Detailed tracing; do not enable in production.
 
-## Integration Guide
+## Integration guide
 
 ### Prometheus
 
-Expose metrics at `/metrics` endpoint using a Prometheus client library. The `MetricsCollector` data can be adapted to Prometheus exposition format.
+Add a `/metrics` endpoint or sidecar that converts `MetricsCollector` counters, histograms, gauges, and samples into Prometheus exposition format.
 
 ### Azure Monitor
 
-Use the Azure Monitor OpenTelemetry exporter to forward metrics and structured logs to Application Insights.
+Use an OpenTelemetry or Azure Monitor exporter to forward structured logs and metric samples to Application Insights.
 
-### Alerting Configuration
+### Alerting configuration
 
-Alert rules are defined in `boardmatch/monitoring.py` as `ALERT_RULES`. These can be:
-1. Evaluated in-process and forwarded to alerting systems
-2. Translated to external alerting platform configurations (PagerDuty, OpsGenie)
-3. Used as Prometheus alerting rules via `evaluate_alerts()`
+`ALERT_RULES` can be:
 
-### Health Checks
+1. Evaluated in-process and forwarded to alerting systems.
+2. Translated into external alerting platform configuration.
+3. Used as a source for Prometheus alerting rules once a Prometheus exporter is added.
 
-- **Liveness**: `GET /health/live` — Process is running
-- **Readiness**: `GET /health/ready` — Dependencies are available
+### Health checks
 
-Readiness probe integrates with monitoring: failures increment `database_latency` with a high value indicating unreachability.
+- **Liveness**: `GET /health/live` — returns `200` when the process is running.
+- **Readiness**: `GET /health/ready` — currently returns `200` with `{"status":"ok"}`. It is a placeholder for future dependency checks and does not currently validate database connectivity or emit database latency metrics.
