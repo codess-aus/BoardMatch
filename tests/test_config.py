@@ -27,6 +27,60 @@ def test_valid_production_configuration_loads():
     assert settings.azure_openai_api_key.get_secret_value() == "secret-api-key"
 
 
+def test_production_config_example_matches_documentation():
+    """Mirrors the example values in docs/production-config-example.md.
+
+    Keep this in sync with that document: if either changes, the other
+    should be updated so the documented example remains provably valid.
+    """
+    settings = Settings.from_environment(
+        {
+            "APP_ENV": "production",
+            "DATABASE_URL": (
+                "postgresql+psycopg://boardmatch_app:REPLACE_ME@"
+                "boardmatch-prod.postgres.database.azure.com:5432/boardmatch"
+                "?sslmode=require"
+            ),
+            "LOG_LEVEL": "WARNING",
+            "AUTH_ISSUER": (
+                "https://login.microsoftonline.com/"
+                "00000000-0000-0000-0000-000000000000/v2.0"
+            ),
+            "AUTH_AUDIENCE": "api://boardmatch-prod",
+            "AZURE_OPENAI_ENDPOINT": "https://boardmatch-prod.openai.azure.com",
+            "AZURE_OPENAI_API_KEY": "REPLACE_ME_OR_SOURCE_FROM_KEY_VAULT",
+            "AZURE_OPENAI_DEPLOYMENT": "gpt-4o",
+            "AZURE_STORAGE_ACCOUNT": "boardmatchprodstorage",
+            "AZURE_STORAGE_CONTAINER": "documents",
+            "STORAGE_ENCRYPTION_REQUIRED": "true",
+            "AZURE_DOC_INTELLIGENCE_ENDPOINT": (
+                "https://boardmatch-prod-di.cognitiveservices.azure.com"
+            ),
+            "AZURE_DOC_INTELLIGENCE_KEY": "REPLACE_ME_OR_SOURCE_FROM_KEY_VAULT",
+            "MS_GRAPH_CLIENT_ID": "00000000-0000-0000-0000-000000000000",
+            "MS_GRAPH_CLIENT_SECRET": "REPLACE_ME_OR_SOURCE_FROM_KEY_VAULT",
+            "MS_GRAPH_TENANT_ID": "00000000-0000-0000-0000-000000000000",
+            "MS_GRAPH_REDIRECT_URI": (
+                "https://boardmatch.example.com/api/v1/integrations/graph/callback"
+            ),
+            "KEY_VAULT_URL": "https://boardmatch-prod-kv.vault.azure.net",
+            "CORS_ALLOWED_ORIGINS": "https://boardmatch.example.com",
+            "RATE_LIMIT_MAX_REQUESTS": "30",
+            "RATE_LIMIT_WINDOW_SECONDS": "60",
+            "DOCUMENT_RETENTION_DAYS": "365",
+            "EXTRACTED_TEXT_RETENTION_DAYS": "90",
+            "AUDIT_LOG_RETENTION_DAYS": "90",
+            "ALERT_WEBHOOK_URL": "https://REPLACE_ME.example.com/incoming-webhook",
+            "ALERT_EVALUATION_INTERVAL_SECONDS": "60",
+        }
+    )
+
+    assert settings.app_env is AppEnvironment.PRODUCTION
+    assert settings.database_url.startswith("postgresql+psycopg://")
+    assert settings.azure_storage_account == "boardmatchprodstorage"
+    assert settings.key_vault_url == "https://boardmatch-prod-kv.vault.azure.net"
+
+
 def test_missing_production_settings_fail_without_leaking_secrets():
     with pytest.raises(ValidationError) as exc_info:
         Settings.from_environment(
