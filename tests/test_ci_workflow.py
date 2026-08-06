@@ -52,12 +52,12 @@ class TestCIWorkflow:
         )
         assert "ruff check" in all_run_steps
 
-    def test_runs_ruff_format_check(self) -> None:
+    def test_runs_critical_ruff_rules(self) -> None:
         test_job = self.workflow["jobs"]["test"]
         all_run_steps = " ".join(
             s.get("run", "") for s in test_job["steps"] if "run" in s
         )
-        assert "ruff format --check" in all_run_steps
+        assert "ruff check . --select E9,F63,F7,F82" in all_run_steps
 
     def test_runs_pytest(self) -> None:
         test_job = self.workflow["jobs"]["test"]
