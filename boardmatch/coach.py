@@ -12,6 +12,14 @@ import os
 from dataclasses import dataclass
 
 from .models import Candidate, FitResult, Opportunity
+from .resilience import CircuitBreaker, with_resilience
+
+# Circuit breaker shared across all Azure OpenAI calls made by this process.
+# Trips after repeated transient failures so a struggling deployment doesn't
+# add retry latency to every subsequent request until it recovers.
+_AZURE_OPENAI_BREAKER = CircuitBreaker(
+    name="azure-openai", failure_threshold=5, recovery_timeout=30.0
+)
 
 
 @dataclass(frozen=True)
@@ -32,18 +40,29 @@ def azure_openai_configured() -> bool:
     )
 
 
-def _generate(prompt: str) -> str | None:
-    """Call Azure OpenAI when configured; return None to fall back to templates."""
-    if not azure_openai_configured():
-        return None
-    try:  # pragma: no cover - requires live Azure credentials
-        from openai import AzureOpenAI
+@with_resilience(
+    _AZURE_OPENAI_BREAKER,
+    max_attempts=3,
+    min_wait_seconds=0.5,
+    max_wait_seconds=8.0,
+    # Only retry transient failures — auth/config errors should fail fast.
+    retry_exceptions=(TimeoutError, ConnectionError, OSError),
+)
+def _call_azure_openai(prompt: str) -> str | None:
+    """Perform the actual Azure OpenAI chat completion call.
 
-        client = AzureOpenAI(
-            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-            api_key=os.environ["AZURE_OPENAI_API_KEY"],
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
-        )
+    Wrapped in retry-with-backoff and a circuit breaker (see
+    ``boardmatch.resilience``) since this is the real outbound network call.
+    """
+    from openai import APIConnectionError, APITimeoutError, AzureOpenAI
+
+    client = AzureOpenAI(
+        azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+        api_key=os.environ["AZURE_OPENAI_API_KEY"],
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+        timeout=20.0,
+    )
+    try:
         response = client.chat.completions.create(
             model=os.environ["AZURE_OPENAI_DEPLOYMENT"],
             messages=[
@@ -59,7 +78,20 @@ def _generate(prompt: str) -> str | None:
             ],
             temperature=0.4,
         )
-        return response.choices[0].message.content
+    except (APIConnectionError, APITimeoutError) as exc:
+        # Normalise SDK-specific transient errors to builtins so the retry
+        # decorator's `retry_exceptions` filter (declared above) can match
+        # them without importing the openai SDK at module load time.
+        raise ConnectionError(str(exc)) from exc
+    return response.choices[0].message.content
+
+
+def _generate(prompt: str) -> str | None:
+    """Call Azure OpenAI when configured; return None to fall back to templates."""
+    if not azure_openai_configured():
+        return None
+    try:  # pragma: no cover - requires live Azure credentials
+        return _call_azure_openai(prompt)
     except Exception:  # noqa: BLE001 - pragma: no cover - network/credential failures
         return None
 

@@ -46,6 +46,8 @@ class Settings(BaseModel):
     cors_allowed_origins: tuple[str, ...] = ()
     rate_limit_max_requests: int = 30
     rate_limit_window_seconds: int = 60
+    alert_webhook_url: str | None = None
+    alert_evaluation_interval_seconds: float = 60.0
 
     @field_validator(
         "auth_issuer",
@@ -60,6 +62,7 @@ class Settings(BaseModel):
         "ms_graph_client_secret",
         "ms_graph_redirect_uri",
         "key_vault_url",
+        "alert_webhook_url",
         mode="before",
     )
     @classmethod
@@ -78,6 +81,7 @@ class Settings(BaseModel):
         "azure_openai_endpoint",
         "azure_doc_intelligence_endpoint",
         "key_vault_url",
+        "alert_webhook_url",
     )
     @classmethod
     def validate_optional_url(cls, value: str | None) -> str | None:
@@ -218,6 +222,8 @@ _ENVIRONMENT_FIELDS = {
     "CORS_ALLOWED_ORIGINS": "cors_allowed_origins",
     "RATE_LIMIT_MAX_REQUESTS": "rate_limit_max_requests",
     "RATE_LIMIT_WINDOW_SECONDS": "rate_limit_window_seconds",
+    "ALERT_WEBHOOK_URL": "alert_webhook_url",
+    "ALERT_EVALUATION_INTERVAL_SECONDS": "alert_evaluation_interval_seconds",
 }
 
 # Environment-variable style names of secrets that may be sourced from Azure

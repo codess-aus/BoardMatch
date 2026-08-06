@@ -7,12 +7,27 @@ tracking for OAuth-based integrations.
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
+import requests
 from pydantic import BaseModel, Field, SecretStr
+
+from .resilience import CircuitBreaker, with_resilience
+
+logger = logging.getLogger(__name__)
+
+GRAPH_API_BASE_URL = "https://graph.microsoft.com/v1.0"
+GRAPH_HTTP_TIMEOUT_SECONDS = 15.0
+
+# Circuit breaker shared across all Microsoft Graph calls made by this
+# process, so an outage doesn't add retry latency to every request.
+_GRAPH_BREAKER = CircuitBreaker(
+    name="microsoft-graph", failure_threshold=5, recovery_timeout=30.0
+)
 
 
 class IntegrationStatus(StrEnum):
@@ -105,6 +120,22 @@ class GraphTokenExchangeError(Exception):
     """Raised when exchanging an OAuth code for a Microsoft Graph token fails."""
 
 
+@with_resilience(
+    _GRAPH_BREAKER,
+    max_attempts=3,
+    min_wait_seconds=0.5,
+    max_wait_seconds=8.0,
+    retry_exceptions=(requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+)
+def _post_token_exchange(token_url: str, data: dict, timeout: float):
+    """POST the authorization-code grant. Wrapped in retry-with-backoff and
+    a shared circuit breaker (see ``boardmatch.resilience``) since this is
+    the real outbound network call."""
+    response = requests.post(token_url, data=data, timeout=timeout)
+    response.raise_for_status()
+    return response
+
+
 def exchange_code_for_token(
     *,
     token_url: str,
@@ -121,12 +152,10 @@ def exchange_code_for_token(
     platform's token endpoint. Raises ``GraphTokenExchangeError`` on any
     network/HTTP/response failure so callers can fall back gracefully.
     """
-    import requests
-
     try:
-        response = requests.post(
+        response = _post_token_exchange(
             token_url,
-            data={
+            {
                 "client_id": client_id,
                 "client_secret": client_secret,
                 "grant_type": "authorization_code",
@@ -134,9 +163,8 @@ def exchange_code_for_token(
                 "redirect_uri": redirect_uri,
                 "scope": " ".join(scopes),
             },
-            timeout=timeout,
+            timeout,
         )
-        response.raise_for_status()
         payload = response.json()
         access_token = payload.get("access_token")
         if not access_token:
@@ -159,6 +187,27 @@ class GraphApiError(Exception):
 _GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 
 
+@with_resilience(
+    _GRAPH_BREAKER,
+    max_attempts=3,
+    min_wait_seconds=0.5,
+    max_wait_seconds=8.0,
+    retry_exceptions=(requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+)
+def _get_graph_people(access_token: str, top: int, timeout: float):
+    """GET /me/people. Wrapped in retry-with-backoff and a shared circuit
+    breaker (see ``boardmatch.resilience``) since this is the real outbound
+    network call."""
+    response = requests.get(
+        f"{_GRAPH_BASE_URL}/me/people",
+        headers={"Authorization": f"Bearer {access_token}"},
+        params={"$top": top},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response
+
+
 def fetch_graph_people(
     access_token: str, *, top: int = 25, timeout: float = 10.0
 ) -> list[dict]:
@@ -169,16 +218,8 @@ def fetch_graph_people(
     "network connections" for warm-introduction path-finding. Raises
     ``GraphApiError`` on any HTTP/network failure so callers can fall back.
     """
-    import requests
-
     try:
-        response = requests.get(
-            f"{_GRAPH_BASE_URL}/me/people",
-            headers={"Authorization": f"Bearer {access_token}"},
-            params={"$top": top},
-            timeout=timeout,
-        )
-        response.raise_for_status()
+        response = _get_graph_people(access_token, top, timeout)
         return response.json().get("value", [])
     except Exception as exc:
         raise GraphApiError(f"Failed to fetch Microsoft Graph people: {exc}") from exc

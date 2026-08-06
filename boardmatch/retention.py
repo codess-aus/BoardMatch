@@ -281,6 +281,22 @@ class RetentionService:
             extracted_texts_deleted=self.cleanup_expired_texts(user_id),
         )
 
+    def run_cleanup_for_users(self, user_ids: list[str]) -> dict[str, RetentionResult]:
+        """Run retention cleanup for multiple users.
+
+        Used by the scheduled cleanup job (``scripts/run_retention_cleanup.py``)
+        so a single scheduler tick can process every known user. Per-user
+        failures are logged and skipped rather than aborting the whole run.
+        """
+        results: dict[str, RetentionResult] = {}
+        for user_id in user_ids:
+            try:
+                results[user_id] = self.run_cleanup(user_id)
+            except Exception:
+                logger.exception("Retention cleanup failed for user_id=%s", user_id)
+                results[user_id] = RetentionResult()
+        return results
+
     def delete_all_user_data(self, user_id: str) -> RetentionResult:
         """Delete all user data immediately (for deletion requests)."""
         result = RetentionResult()

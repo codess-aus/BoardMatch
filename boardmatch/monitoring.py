@@ -7,12 +7,20 @@ that can be evaluated against collected metrics.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
+
+import requests
+
+from .resilience import CircuitBreaker, with_resilience
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Structured logging
@@ -112,6 +120,10 @@ class MetricsCollector:
         self._histograms: dict[str, list[float]] = defaultdict(list)
         self._gauges: dict[str, float] = {}
         self._samples: list[MetricSample] = []
+        # Tracks (name, labels) for every key so we can render metrics in
+        # bulk (e.g. Prometheus exposition format) without callers having to
+        # know every label combination up front.
+        self._label_index: dict[str, tuple[str, dict[str, str]]] = {}
 
     def _sanitize_labels(self, labels: dict[str, str] | None) -> dict[str, str]:
         """Filter labels to only allow safe dimensions."""
@@ -136,6 +148,7 @@ class MetricsCollector:
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
         self._counters[key] += value
+        self._label_index[key] = (name, safe_labels)
         self._samples.append(MetricSample(name=name, value=value, labels=safe_labels))
 
     def observe(
@@ -145,6 +158,7 @@ class MetricsCollector:
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
         self._histograms[key].append(value)
+        self._label_index[key] = (name, safe_labels)
         self._samples.append(MetricSample(name=name, value=value, labels=safe_labels))
 
     def set_gauge(
@@ -154,6 +168,7 @@ class MetricsCollector:
         safe_labels = self._sanitize_labels(labels)
         key = self._label_key(name, safe_labels)
         self._gauges[key] = value
+        self._label_index[key] = (name, safe_labels)
         self._samples.append(MetricSample(name=name, value=value, labels=safe_labels))
 
     def get_counter(self, name: str, labels: dict[str, str] | None = None) -> float:
@@ -182,12 +197,37 @@ class MetricsCollector:
             return list(self._samples)
         return [s for s in self._samples if s.name == name]
 
+    def iter_counters(self) -> list[tuple[str, dict[str, str], float]]:
+        """Yield (name, labels, value) for every distinct counter series."""
+        return [
+            (*self._label_index[key], value)
+            for key, value in self._counters.items()
+            if key in self._label_index
+        ]
+
+    def iter_gauges(self) -> list[tuple[str, dict[str, str], float]]:
+        """Yield (name, labels, value) for every distinct gauge series."""
+        return [
+            (*self._label_index[key], value)
+            for key, value in self._gauges.items()
+            if key in self._label_index
+        ]
+
+    def iter_histograms(self) -> list[tuple[str, dict[str, str], int, float]]:
+        """Yield (name, labels, count, sum) for every distinct histogram series."""
+        return [
+            (*self._label_index[key], len(values), sum(values))
+            for key, values in self._histograms.items()
+            if key in self._label_index
+        ]
+
     def reset(self) -> None:
         """Clear all collected metrics."""
         self._counters.clear()
         self._histograms.clear()
         self._gauges.clear()
         self._samples.clear()
+        self._label_index.clear()
 
 
 # Module-level default collector instance
@@ -207,6 +247,9 @@ STALE_OPPORTUNITY_COUNT = "stale_opportunity_count"
 DOCUMENT_PROCESSING_FAILURES = "document_processing_failures"
 AI_GENERATION_FAILURES = "ai_generation_failures"
 GRAPH_SYNC_FAILURES = "graph_sync_failures"
+RETENTION_DOCUMENTS_DELETED = "retention_documents_deleted"
+RETENTION_TEXTS_DELETED = "retention_texts_deleted"
+RETENTION_CLEANUP_RUNS = "retention_cleanup_runs"
 
 
 # ---------------------------------------------------------------------------
@@ -352,3 +395,205 @@ def record_ingestion_result(source_key: str, success: bool) -> None:
 def record_stale_opportunities(count: int) -> None:
     """Record the number of stale opportunities detected."""
     metrics.set_gauge(STALE_OPPORTUNITY_COUNT, float(count))
+
+
+def record_retention_cleanup(
+    documents_deleted: int, texts_deleted: int, *, success: bool = True
+) -> None:
+    """Record a retention cleanup run's outcome (see scripts/run_retention_cleanup.py)."""
+    metrics.increment(RETENTION_CLEANUP_RUNS, labels={"success": str(success).lower()})
+    metrics.increment(RETENTION_DOCUMENTS_DELETED, value=float(documents_deleted))
+    metrics.increment(RETENTION_TEXTS_DELETED, value=float(texts_deleted))
+
+
+# ---------------------------------------------------------------------------
+# Prometheus exposition
+# ---------------------------------------------------------------------------
+#
+# We hand-roll the exposition text format directly from MetricsCollector's
+# own samples rather than adding the `prometheus-client` package. That
+# library requires each metric's label *names* to be declared once, up
+# front, which doesn't fit MetricsCollector's dynamic/PII-sanitized label
+# model (different calls to the same metric name can carry different label
+# keys). Hand-rolling keeps MetricsCollector as the single source of truth
+# and avoids maintaining two parallel instrumentation paths.
+
+
+def _prometheus_metric_name(name: str) -> str:
+    """Sanitize a metric name to the Prometheus-safe character set."""
+    return re.sub(r"[^a-zA-Z0-9_:]", "_", name)
+
+
+def _prometheus_label_value(value: str) -> str:
+    """Escape a label value for Prometheus exposition format."""
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
+def _prometheus_labels(labels: dict[str, str]) -> str:
+    if not labels:
+        return ""
+    parts = ",".join(
+        f'{k}="{_prometheus_label_value(v)}"' for k, v in sorted(labels.items())
+    )
+    return "{" + parts + "}"
+
+
+def render_prometheus_text(collector: MetricsCollector | None = None) -> str:
+    """Render collected metrics in Prometheus text exposition format.
+
+    Histograms are exported as `_count` and `_sum` series (not full bucket
+    distributions), since MetricsCollector stores raw observations rather
+    than pre-bucketed counts.
+    """
+    collector = collector or metrics
+    lines: list[str] = []
+    emitted_help: set[str] = set()
+
+    def _help_and_type(name: str, metric_type: str) -> None:
+        safe_name = _prometheus_metric_name(name)
+        if safe_name in emitted_help:
+            return
+        emitted_help.add(safe_name)
+        lines.append(f"# HELP {safe_name} BoardMatch metric: {name}")
+        lines.append(f"# TYPE {safe_name} {metric_type}")
+
+    for name, labels, value in collector.iter_counters():
+        _help_and_type(name, "counter")
+        lines.append(
+            f"{_prometheus_metric_name(name)}{_prometheus_labels(labels)} {value}"
+        )
+
+    for name, labels, value in collector.iter_gauges():
+        _help_and_type(name, "gauge")
+        lines.append(
+            f"{_prometheus_metric_name(name)}{_prometheus_labels(labels)} {value}"
+        )
+
+    for name, labels, count, total in collector.iter_histograms():
+        safe_name = _prometheus_metric_name(name)
+        _help_and_type(name, "summary")
+        label_str = _prometheus_labels(labels)
+        lines.append(f"{safe_name}_count{label_str} {count}")
+        lines.append(f"{safe_name}_sum{label_str} {total}")
+
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+
+
+# ---------------------------------------------------------------------------
+# Alert notification (webhook sink)
+# ---------------------------------------------------------------------------
+
+ALERT_WEBHOOK_TIMEOUT_SECONDS = 10.0
+
+_ALERT_WEBHOOK_BREAKER = CircuitBreaker(
+    name="alert-webhook", failure_threshold=3, recovery_timeout=30.0
+)
+
+
+@with_resilience(
+    _ALERT_WEBHOOK_BREAKER,
+    max_attempts=3,
+    min_wait_seconds=0.5,
+    max_wait_seconds=5.0,
+    retry_exceptions=(requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+)
+def _post_alert_webhook(webhook_url: str, payload: dict[str, Any]) -> None:
+    response = requests.post(
+        webhook_url, json=payload, timeout=ALERT_WEBHOOK_TIMEOUT_SECONDS
+    )
+    response.raise_for_status()
+
+
+def notify_firing_alerts(
+    evaluations: list[AlertEvaluation], webhook_url: str | None = None
+) -> list[AlertEvaluation]:
+    """Route FIRING alert evaluations to a notification sink.
+
+    When ``webhook_url`` is unset (e.g. ``Settings.alert_webhook_url`` is
+    empty), this is a no-op/log-only sink: firing alerts are logged at
+    WARNING/ERROR but no network call is made. This keeps local/dev/test
+    environments from requiring a webhook to be configured.
+    """
+    firing = [e for e in evaluations if e.status == AlertStatus.FIRING]
+    if not firing:
+        return firing
+
+    for evaluation in firing:
+        log_level = (
+            logging.ERROR
+            if evaluation.rule.severity == AlertSeverity.CRITICAL
+            else logging.WARNING
+        )
+        logger.log(
+            log_level,
+            "Alert firing: %s (value=%s threshold=%s severity=%s)",
+            evaluation.rule.name,
+            evaluation.current_value,
+            evaluation.rule.threshold,
+            evaluation.rule.severity,
+        )
+
+    if not webhook_url:
+        return firing
+
+    payload = {
+        "alerts": [
+            {
+                "name": e.rule.name,
+                "description": e.rule.description,
+                "severity": str(e.rule.severity),
+                "status": str(e.status),
+                "metric": e.rule.metric_name,
+                "current_value": e.current_value,
+                "threshold": e.rule.threshold,
+                "timestamp": e.timestamp,
+            }
+            for e in firing
+        ]
+    }
+    try:
+        _post_alert_webhook(webhook_url, payload)
+    except Exception:
+        logger.exception(
+            "Failed to deliver alert webhook notification to %s", webhook_url
+        )
+
+    return firing
+
+
+# ---------------------------------------------------------------------------
+# Scheduled alert evaluation loop
+# ---------------------------------------------------------------------------
+
+DEFAULT_ALERT_EVALUATION_INTERVAL_SECONDS = 60.0
+
+
+async def run_alert_evaluation_loop(
+    *,
+    interval_seconds: float = DEFAULT_ALERT_EVALUATION_INTERVAL_SECONDS,
+    webhook_url: str | None = None,
+    collector: MetricsCollector | None = None,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    """Periodically evaluate alert rules and route firing alerts to a sink.
+
+    Intended to be started as a background asyncio task from the FastAPI
+    lifespan (see ``boardmatch/api/__init__.py``). Runs until ``stop_event``
+    is set (used for graceful shutdown / tests), evaluating on every tick and
+    swallowing per-tick errors so a transient failure doesn't kill the loop.
+    """
+    stop_event = stop_event or asyncio.Event()
+    while not stop_event.is_set():
+        try:
+            evaluations = evaluate_alerts(collector)
+            notify_firing_alerts(evaluations, webhook_url=webhook_url)
+        except Exception:
+            logger.exception("Alert evaluation tick failed")
+
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            pass

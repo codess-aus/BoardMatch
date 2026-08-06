@@ -13,3 +13,4 @@ sqlalchemy>=2.0,<3.0
 psycopg[binary]>=3.2
 alembic>=1.13
 azure-keyvault-secrets>=4.8
+tenacity>=8.2
